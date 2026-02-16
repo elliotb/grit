@@ -14,6 +14,9 @@ type keyMap struct {
 	Fetch           key.Binding
 	Sync            key.Binding
 	OpenPR          key.Binding
+	Diff            key.Binding
+	DiffClose       key.Binding
+	Tab             key.Binding
 }
 
 func defaultKeyMap() keyMap {
@@ -61,6 +64,18 @@ func defaultKeyMap() keyMap {
 		OpenPR: key.NewBinding(
 			key.WithKeys("o"),
 			key.WithHelp("o", "open PR"),
+		),
+		Diff: key.NewBinding(
+			key.WithKeys("d"),
+			key.WithHelp("d", "diff"),
+		),
+		DiffClose: key.NewBinding(
+			key.WithKeys("d", "esc"),
+			key.WithHelp("esc/d", "close"),
+		),
+		Tab: key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("tab", "switch panel"),
 		),
 	}
 }
