@@ -155,22 +155,22 @@ func TestStackRestack_Error(t *testing.T) {
 	}
 }
 
-func TestRepoSync_Success(t *testing.T) {
+func TestSync_Success(t *testing.T) {
 	mock := &mockExecutor{}
 	client := New(mock)
 
-	err := client.RepoSync(context.Background())
+	err := client.Sync(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertArgs(t, mock, []string{"repo", "sync", "--no-interactive"})
+	assertArgs(t, mock, []string{"sync", "-f", "--no-interactive"})
 }
 
-func TestRepoSync_Error(t *testing.T) {
+func TestSync_Error(t *testing.T) {
 	mock := &mockExecutor{err: errors.New("sync failed")}
 	client := New(mock)
 
-	err := client.RepoSync(context.Background())
+	err := client.Sync(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

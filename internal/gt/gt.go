@@ -71,9 +71,9 @@ func (c *Client) StackRestack(ctx context.Context) error {
 	return err
 }
 
-// RepoSync runs `gt repo sync --no-interactive`.
-func (c *Client) RepoSync(ctx context.Context) error {
-	_, err := c.executor.Execute(ctx, "gt", "repo", "sync", "--no-interactive")
+// Sync runs `gt sync -f --no-interactive`.
+func (c *Client) Sync(ctx context.Context) error {
+	_, err := c.executor.Execute(ctx, "gt", "sync", "-f", "--no-interactive")
 	return err
 }
 

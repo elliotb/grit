@@ -215,7 +215,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			client := m.gtClient
 			spinnerCmd := m.statusBar.startSpinner("Syncing...")
 			actionCmd := runAction("sync", "Synced", func(ctx context.Context) error {
-				return client.RepoSync(ctx)
+				return client.Sync(ctx)
 			})
 			cmds = append(cmds, spinnerCmd, actionCmd)
 		case key.Matches(msg, m.keys.OpenPR):
