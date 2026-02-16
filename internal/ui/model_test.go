@@ -11,16 +11,22 @@ import (
 )
 
 type mockExecutor struct {
-	output string
-	err    error
+	fn func(ctx context.Context, name string, args ...string) (string, error)
 }
 
 func (m *mockExecutor) Execute(ctx context.Context, name string, args ...string) (string, error) {
-	return m.output, m.err
+	return m.fn(ctx, name, args...)
+}
+
+// simpleMock creates a mockExecutor that always returns the given output/err.
+func simpleMock(output string, err error) *mockExecutor {
+	return &mockExecutor{fn: func(ctx context.Context, name string, args ...string) (string, error) {
+		return output, err
+	}}
 }
 
 func newTestModel(output string, err error) Model {
-	client := gt.New(&mockExecutor{output: output, err: err})
+	client := gt.New(simpleMock(output, err))
 	return New(client, "")
 }
 
@@ -430,14 +436,94 @@ func TestRunAction_PropagatesError(t *testing.T) {
 	}
 }
 
-// Keep this test but move it after the action tests
+func TestCheckout_EnterKey(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.cursor = 0 // on "main"
+
+	updated, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyEnter}))
+	m = updated.(Model)
+
+	if !m.running {
+		t.Error("pressing Enter should set running=true")
+	}
+	if !m.statusBar.spinning {
+		t.Error("spinner should be active")
+	}
+	if cmd == nil {
+		t.Fatal("expected commands from Enter key")
+	}
+}
+
+func TestCheckout_EnterOnEmptyTree(t *testing.T) {
+	m := loadedModel("some random output without markers")
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyEnter}))
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("Enter on empty tree should not start action")
+	}
+}
+
+func TestActionKeys(t *testing.T) {
+	tests := []struct {
+		name     string
+		key      rune
+		wantRun  bool
+		wantSpin string
+	}{
+		{"submit stack", 's', true, "Submitting stack..."},
+		{"submit downstack", 'S', true, "Submitting downstack..."},
+		{"restack", 'r', true, "Restacking..."},
+		{"sync", 'y', true, "Syncing..."},
+		{"open PR", 'o', true, "Opening PR..."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+
+			updated, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{tt.key}}))
+			m = updated.(Model)
+
+			if m.running != tt.wantRun {
+				t.Errorf("running = %v, want %v", m.running, tt.wantRun)
+			}
+			if m.statusBar.spinnerLabel != tt.wantSpin {
+				t.Errorf("spinnerLabel = %q, want %q", m.statusBar.spinnerLabel, tt.wantSpin)
+			}
+			if cmd == nil {
+				t.Error("expected commands from action key")
+			}
+		})
+	}
+}
+
+func TestActionKeys_BlockedWhileRunning(t *testing.T) {
+	keys := []rune{'s', 'S', 'r', 'y', 'o'}
+
+	for _, k := range keys {
+		t.Run(string(k), func(t *testing.T) {
+			m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+			m.running = true
+
+			updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{k}}))
+			m = updated.(Model)
+
+			// Spinner should not have been re-started
+			if m.statusBar.spinning {
+				t.Error("action should be blocked while running")
+			}
+		})
+	}
+}
+
 func TestView_BeforeReady(t *testing.T) {
 	m := newTestModel("", nil)
 	if got := m.View(); got != "Loading..." {
 		t.Errorf("got %q, want %q", got, "Loading...")
 	}
 }
-
 
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)

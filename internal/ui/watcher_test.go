@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -28,9 +27,14 @@ func setupFakeGitDir(t *testing.T) string {
 	return dir
 }
 
+// newWatcherTestModel creates a test model with a simple mock executor.
+func newWatcherTestModel(gitDir string) Model {
+	client := gt.New(simpleMock("◉  main", nil))
+	return New(client, gitDir)
+}
+
 func TestUpdate_GitChangeMsg_ReturnsDebounceTick(t *testing.T) {
-	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
-	m := New(client, "")
+	m := newWatcherTestModel("")
 	m = sendWindowSize(m, 80, 24)
 
 	updated, cmd := m.Update(gitChangeMsg{})
@@ -47,8 +51,7 @@ func TestUpdate_GitChangeMsg_ReturnsDebounceTick(t *testing.T) {
 }
 
 func TestUpdate_DebounceFireMsg_MatchingSeq(t *testing.T) {
-	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
-	m := New(client, "")
+	m := newWatcherTestModel("")
 	m = sendWindowSize(m, 80, 24)
 	m.debounceSeq = 5
 
@@ -59,26 +62,20 @@ func TestUpdate_DebounceFireMsg_MatchingSeq(t *testing.T) {
 }
 
 func TestUpdate_DebounceFireMsg_StaleSeq(t *testing.T) {
-	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
-	m := New(client, "")
+	m := newWatcherTestModel("")
 	m = sendWindowSize(m, 80, 24)
 	m.debounceSeq = 5
 
 	_, cmd := m.Update(debounceFireMsg{seq: 3})
 	// Stale seq should not trigger a loadLog, but may still have viewport cmd
-	// The important thing: no loadLog should be triggered
-	if cmd != nil {
-		// The viewport update might produce a cmd, that's OK.
-		// We can't easily distinguish, so just verify the seq didn't change.
-	}
+	_ = cmd
 	if m.debounceSeq != 5 {
 		t.Errorf("debounceSeq should not change on stale fire, got %d", m.debounceSeq)
 	}
 }
 
 func TestUpdate_GitChangeMsg_MultipleEvents_OnlyLastFires(t *testing.T) {
-	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
-	m := New(client, "")
+	m := newWatcherTestModel("")
 	m = sendWindowSize(m, 80, 24)
 
 	// Simulate 3 rapid gitChangeMsg events
@@ -95,7 +92,6 @@ func TestUpdate_GitChangeMsg_MultipleEvents_OnlyLastFires(t *testing.T) {
 	// Only seq=3 should trigger a reload; seq=1 and seq=2 are stale
 	updated1, cmd1 := m.Update(debounceFireMsg{seq: 1})
 	m = updated1.(Model)
-	// cmd1 should only have viewport cmd (no loadLog)
 	_ = cmd1
 
 	updated3, cmd3 := m.Update(debounceFireMsg{seq: 3})
@@ -113,8 +109,7 @@ func TestDebounceDuration(t *testing.T) {
 
 func TestUpdate_WatcherErrMsg_ShowsError(t *testing.T) {
 	dir := setupFakeGitDir(t)
-	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
-	m := New(client, dir)
+	m := newWatcherTestModel(dir)
 	defer m.watcher.Close()
 	m = sendWindowSize(m, 80, 24)
 
@@ -177,8 +172,7 @@ func TestWaitForChange_NilWatcher(t *testing.T) {
 
 func TestNew_WithGitDir(t *testing.T) {
 	dir := setupFakeGitDir(t)
-	client := gt.New(&mockExecutor{output: "", err: nil})
-	m := New(client, dir)
+	m := newWatcherTestModel(dir)
 
 	if m.watcher == nil {
 		t.Fatal("expected watcher to be created for valid gitDir")
@@ -187,7 +181,7 @@ func TestNew_WithGitDir(t *testing.T) {
 }
 
 func TestNew_WithEmptyGitDir(t *testing.T) {
-	client := gt.New(&mockExecutor{output: "", err: nil})
+	client := gt.New(simpleMock("", nil))
 	m := New(client, "")
 
 	if m.watcher != nil {
@@ -197,8 +191,7 @@ func TestNew_WithEmptyGitDir(t *testing.T) {
 
 func TestQuit_ClosesWatcher(t *testing.T) {
 	dir := setupFakeGitDir(t)
-	client := gt.New(&mockExecutor{output: "", err: nil})
-	m := New(client, dir)
+	m := newWatcherTestModel(dir)
 
 	if m.watcher == nil {
 		t.Fatal("expected watcher to be created")
@@ -215,15 +208,4 @@ func TestQuit_ClosesWatcher(t *testing.T) {
 	if len(watchList) != 0 {
 		t.Error("expected watcher to be closed (empty watch list)")
 	}
-}
-
-// mockExecutor is already defined in model_test.go, so we use it directly.
-// This file relies on the test helpers from model_test.go since they're in
-// the same package.
-var _ gt.CommandExecutor = (*mockExecutor)(nil)
-
-// Verify the mock satisfies the interface with the right context parameter.
-func init() {
-	m := &mockExecutor{output: "test"}
-	_, _ = m.Execute(context.Background(), "test")
 }
