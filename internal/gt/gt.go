@@ -88,3 +88,9 @@ func (c *Client) OpenPR(ctx context.Context, branchName string) error {
 	_, err := c.executor.Execute(ctx, "gt", "pr", branchName)
 	return err
 }
+
+// BranchPRInfo runs `gt branch pr-info --branch <branchName> --no-interactive`
+// and returns the raw JSON output.
+func (c *Client) BranchPRInfo(ctx context.Context, branchName string) (string, error) {
+	return c.executor.Execute(ctx, "gt", "branch", "pr-info", "--branch", branchName, "--no-interactive")
+}

@@ -50,6 +50,11 @@ type diffFileContentMsg struct {
 	err     error
 }
 
+// prInfoResultMsg carries PR info for all branches.
+type prInfoResultMsg struct {
+	infos map[string]gt.PRInfo
+}
+
 // Model is the root bubbletea model for grit.
 type Model struct {
 	gtClient       *gt.Client
@@ -175,6 +180,59 @@ func (m Model) loadDiffFile(parent, branch, file string) tea.Cmd {
 			return diffFileContentMsg{file: file, err: err}
 		}
 		return diffFileContentMsg{file: file, content: content}
+	}
+}
+
+// loadPRInfo fetches PR info for all non-trunk branches asynchronously.
+func (m Model) loadPRInfo() tea.Cmd {
+	// Collect all non-root branch names.
+	var names []string
+	var collectNames func(b *gt.Branch, isRoot bool)
+	collectNames = func(b *gt.Branch, isRoot bool) {
+		if !isRoot {
+			names = append(names, b.Name)
+		}
+		for _, child := range b.Children {
+			collectNames(child, false)
+		}
+	}
+	for _, root := range m.branches {
+		collectNames(root, true)
+	}
+
+	if len(names) == 0 {
+		return nil
+	}
+
+	client := m.gtClient
+	return func() tea.Msg {
+		ctx := context.Background()
+		infos := make(map[string]gt.PRInfo)
+		for _, name := range names {
+			output, err := client.BranchPRInfo(ctx, name)
+			if err != nil {
+				infos[name] = gt.PRInfo{}
+				continue
+			}
+			infos[name] = gt.ParsePRInfo(output)
+		}
+		return prInfoResultMsg{infos: infos}
+	}
+}
+
+// applyPRInfo walks the branch tree and sets PR info from the map.
+func applyPRInfo(branches []*gt.Branch, infos map[string]gt.PRInfo) {
+	var walk func(b *gt.Branch)
+	walk = func(b *gt.Branch) {
+		if info, ok := infos[b.Name]; ok {
+			b.PR = info
+		}
+		for _, child := range b.Children {
+			walk(child)
+		}
+	}
+	for _, root := range branches {
+		walk(root)
 	}
 }
 
@@ -403,6 +461,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.displayEntries = flattenForDisplay(branches)
 				m.preserveCursor(oldName)
 				content = renderTree(m.displayEntries, m.cursor)
+				cmds = append(cmds, m.loadPRInfo())
 			}
 		}
 
@@ -445,6 +504,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.action != "openpr" {
 				cmds = append(cmds, m.loadLog())
 			}
+		}
+
+	case prInfoResultMsg:
+		applyPRInfo(m.branches, msg.infos)
+		if m.mode == modeTree && m.ready {
+			m.viewport.SetContent(renderTree(m.displayEntries, m.cursor))
 		}
 
 	case spinner.TickMsg:

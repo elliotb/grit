@@ -218,6 +218,31 @@ func TestOpenPR_Error(t *testing.T) {
 	}
 }
 
+func TestBranchPRInfo_Success(t *testing.T) {
+	want := `{"prNumber": 142, "state": "OPEN"}`
+	mock := &mockExecutor{output: want}
+	client := New(mock)
+
+	got, err := client.BranchPRInfo(context.Background(), "feature-a")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	assertArgs(t, mock, []string{"branch", "pr-info", "--branch", "feature-a", "--no-interactive"})
+}
+
+func TestBranchPRInfo_Error(t *testing.T) {
+	mock := &mockExecutor{err: errors.New("no PR")}
+	client := New(mock)
+
+	_, err := client.BranchPRInfo(context.Background(), "feature-a")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestExecCommandExecutor_Echo(t *testing.T) {
 	exec := &ExecCommandExecutor{}
 	got, err := exec.Execute(context.Background(), "echo", "hello")

@@ -1326,6 +1326,118 @@ func TestTreeLegend_ContainsHelp(t *testing.T) {
 	}
 }
 
+// --- PR info tests ---
+
+func TestPRInfoResult_AppliedToBranches(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+
+	infos := map[string]gt.PRInfo{
+		"feature-top":  {Number: 142, State: "OPEN"},
+		"feature-base": {Number: 143, State: "DRAFT"},
+	}
+	updated, _ := m.Update(prInfoResultMsg{infos: infos})
+	m = updated.(Model)
+
+	// Verify PR info is set on the branch tree.
+	featureBase := m.branches[0].Children[0]
+	if featureBase.PR.Number != 143 {
+		t.Errorf("feature-base PR number = %d, want 143", featureBase.PR.Number)
+	}
+	if featureBase.PR.State != "DRAFT" {
+		t.Errorf("feature-base PR state = %q, want DRAFT", featureBase.PR.State)
+	}
+
+	featureTop := featureBase.Children[0]
+	if featureTop.PR.Number != 142 {
+		t.Errorf("feature-top PR number = %d, want 142", featureTop.PR.Number)
+	}
+}
+
+func TestPRInfoResult_RenderedInView(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+
+	infos := map[string]gt.PRInfo{
+		"feature-top":  {Number: 142, State: "OPEN"},
+		"feature-base": {Number: 143, State: "DRAFT"},
+	}
+	updated, _ := m.Update(prInfoResultMsg{infos: infos})
+	m = updated.(Model)
+
+	view := m.View()
+	if !containsString(view, "#142") {
+		t.Error("view should contain '#142'")
+	}
+	if !containsString(view, "open") {
+		t.Error("view should contain 'open'")
+	}
+	if !containsString(view, "#143") {
+		t.Error("view should contain '#143'")
+	}
+}
+
+func TestPRInfoResult_NoReRenderInDiffMode(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+
+	infos := map[string]gt.PRInfo{
+		"feature-top": {Number: 142, State: "OPEN"},
+	}
+	updated, _ := m.Update(prInfoResultMsg{infos: infos})
+	m = updated.(Model)
+
+	// PR info should still be applied to the branch data.
+	featureBase := m.branches[0].Children[0]
+	featureTop := featureBase.Children[0]
+	if featureTop.PR.Number != 142 {
+		t.Errorf("PR info should still be applied in diff mode, got %d", featureTop.PR.Number)
+	}
+}
+
+func TestLogResult_DispatchesPRInfoLoad(t *testing.T) {
+	m := newTestModel("", nil)
+	m = sendWindowSize(m, 80, 24)
+
+	content := "│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main"
+	_, cmd := m.Update(logResultMsg{output: content})
+
+	if cmd == nil {
+		t.Fatal("logResultMsg should produce a command (including loadPRInfo)")
+	}
+}
+
+func TestApplyPRInfo(t *testing.T) {
+	branches := []*gt.Branch{
+		{
+			Name: "main",
+			Children: []*gt.Branch{
+				{
+					Name: "a",
+					Children: []*gt.Branch{
+						{Name: "b"},
+					},
+				},
+			},
+		},
+	}
+
+	infos := map[string]gt.PRInfo{
+		"a": {Number: 10, State: "OPEN"},
+		"b": {Number: 20, State: "MERGED"},
+	}
+	applyPRInfo(branches, infos)
+
+	if branches[0].PR.Number != 0 {
+		t.Error("main should have no PR")
+	}
+	if branches[0].Children[0].PR.Number != 10 {
+		t.Errorf("a PR = %d, want 10", branches[0].Children[0].PR.Number)
+	}
+	if branches[0].Children[0].Children[0].PR.Number != 20 {
+		t.Errorf("b PR = %d, want 20", branches[0].Children[0].Children[0].PR.Number)
+	}
+}
+
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }

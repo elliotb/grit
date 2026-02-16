@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -14,6 +15,10 @@ var (
 	connectorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	selectedBranchStyle = lipgloss.NewStyle().Bold(true).Reverse(true)
 	annotationStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	prOpenStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	prDraftStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	prMergedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
+	prClosedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
 // displayEntry represents a branch with its visual depth for flat rendering.
@@ -82,12 +87,52 @@ func annotationLabel(b *gt.Branch) string {
 	return " " + annotationStyle.Render("("+b.Annotation+")")
 }
 
+// prLabel returns a styled PR status label, or empty string if no PR.
+func prLabel(pr gt.PRInfo) string {
+	if pr.Number == 0 {
+		return ""
+	}
+	numStr := fmt.Sprintf("#%d", pr.Number)
+	switch strings.ToUpper(pr.State) {
+	case "OPEN":
+		return " " + prOpenStyle.Render(numStr+" open")
+	case "DRAFT":
+		return " " + prDraftStyle.Render(numStr+" draft")
+	case "MERGED":
+		return " " + prMergedStyle.Render(numStr+" merged")
+	case "CLOSED":
+		return " " + prClosedStyle.Render(numStr+" closed")
+	default:
+		return " " + numStr
+	}
+}
+
+// prLabelPlain returns an unstyled PR status string for use in reverse-video labels.
+func prLabelPlain(pr gt.PRInfo) string {
+	if pr.Number == 0 {
+		return ""
+	}
+	numStr := fmt.Sprintf("#%d", pr.Number)
+	switch strings.ToUpper(pr.State) {
+	case "OPEN":
+		return " " + numStr + " open"
+	case "DRAFT":
+		return " " + numStr + " draft"
+	case "MERGED":
+		return " " + numStr + " merged"
+	case "CLOSED":
+		return " " + numStr + " closed"
+	default:
+		return " " + numStr
+	}
+}
+
 // branchLabel returns a styled label for a branch.
 func branchLabel(b *gt.Branch) string {
 	if b.IsCurrent {
-		return currentBranchStyle.Render("◉ "+b.Name) + annotationLabel(b)
+		return currentBranchStyle.Render("◉ "+b.Name) + annotationLabel(b) + prLabel(b.PR)
 	}
-	return branchStyle.Render("◯ "+b.Name) + annotationLabel(b)
+	return branchStyle.Render("◯ "+b.Name) + annotationLabel(b) + prLabel(b.PR)
 }
 
 // selectedBranchLabel returns a highlighted label for the cursor-selected branch.
@@ -100,5 +145,6 @@ func selectedBranchLabel(b *gt.Branch) string {
 	if b.Annotation != "" {
 		label += " (" + b.Annotation + ")"
 	}
+	label += prLabelPlain(b.PR)
 	return selectedBranchStyle.Render(label)
 }

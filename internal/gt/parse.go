@@ -5,11 +5,18 @@ import (
 	"unicode/utf8"
 )
 
+// PRInfo holds pull request metadata for a branch.
+type PRInfo struct {
+	Number int    // 0 means no PR
+	State  string // "OPEN", "DRAFT", "MERGED", "CLOSED", or "" if no PR
+}
+
 // Branch represents a single branch in the Graphite stack tree.
 type Branch struct {
 	Name       string
 	IsCurrent  bool
 	Annotation string // e.g. "needs restack", "merging", "" if none
+	PR         PRInfo
 	Children   []*Branch
 }
 
