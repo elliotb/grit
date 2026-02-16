@@ -106,6 +106,15 @@ func (m *Model) preserveCursor(oldBranchName string) {
 	m.cursor = 0
 }
 
+// ensureCursorVisible adjusts the viewport scroll so the cursor line is visible.
+func (m *Model) ensureCursorVisible() {
+	if m.cursor < m.viewport.YOffset {
+		m.viewport.SetYOffset(m.cursor)
+	} else if m.cursor >= m.viewport.YOffset+m.viewport.Height {
+		m.viewport.SetYOffset(m.cursor - m.viewport.Height + 1)
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -116,6 +125,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.watcher.Close()
 			}
 			return m, tea.Quit
+		}
+
+		switch {
+		case key.Matches(msg, m.keys.Up):
+			if m.cursor > 0 {
+				m.cursor--
+				m.viewport.SetContent(renderTree(m.displayEntries, m.cursor))
+				m.ensureCursorVisible()
+			}
+		case key.Matches(msg, m.keys.Down):
+			if m.cursor < len(m.displayEntries)-1 {
+				m.cursor++
+				m.viewport.SetContent(renderTree(m.displayEntries, m.cursor))
+				m.ensureCursorVisible()
+			}
 		}
 
 	case tea.WindowSizeMsg:

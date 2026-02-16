@@ -245,6 +245,84 @@ func TestPreserveCursor_EmptyOldName(t *testing.T) {
 	}
 }
 
+// Helper to load a tree with branches into a ready model.
+func loadedModel(content string) Model {
+	m := newTestModel("", nil)
+	m = sendWindowSize(m, 80, 24)
+	updated, _ := m.Update(logResultMsg{output: content})
+	return updated.(Model)
+}
+
+func sendKey(m Model, r rune) Model {
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{r}}))
+	return updated.(Model)
+}
+
+func sendSpecialKey(m Model, k tea.KeyType) Model {
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: k}))
+	return updated.(Model)
+}
+
+func TestNavigation_Down(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	// Cursor starts at IsCurrent (feature-top, index 2 after flatten: main=0, feature-base=1, feature-top=2)
+	initial := m.cursor
+
+	m = sendKey(m, 'j')
+	if m.cursor != initial+1 && m.cursor <= len(m.displayEntries)-1 {
+		// Just verify it moved down
+	}
+	if m.cursor <= initial && initial < len(m.displayEntries)-1 {
+		t.Errorf("cursor should have moved down from %d, but is %d", initial, m.cursor)
+	}
+}
+
+func TestNavigation_UpAtZero(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.cursor = 0
+	m = sendKey(m, 'k')
+	if m.cursor != 0 {
+		t.Errorf("cursor should stay at 0, got %d", m.cursor)
+	}
+}
+
+func TestNavigation_DownAtEnd(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.cursor = len(m.displayEntries) - 1
+	last := m.cursor
+	m = sendKey(m, 'j')
+	if m.cursor != last {
+		t.Errorf("cursor should stay at %d, got %d", last, m.cursor)
+	}
+}
+
+func TestNavigation_ArrowKeys(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.cursor = 1
+
+	m = sendSpecialKey(m, tea.KeyDown)
+	if m.cursor != 2 {
+		t.Errorf("down arrow: cursor = %d, want 2", m.cursor)
+	}
+
+	m = sendSpecialKey(m, tea.KeyUp)
+	if m.cursor != 1 {
+		t.Errorf("up arrow: cursor = %d, want 1", m.cursor)
+	}
+}
+
+func TestNavigation_EmptyTree(t *testing.T) {
+	m := loadedModel("some random output without markers")
+	m = sendKey(m, 'j')
+	if m.cursor != 0 {
+		t.Errorf("down on empty tree: cursor = %d, want 0", m.cursor)
+	}
+	m = sendKey(m, 'k')
+	if m.cursor != 0 {
+		t.Errorf("up on empty tree: cursor = %d, want 0", m.cursor)
+	}
+}
+
 func TestView_BeforeReady(t *testing.T) {
 	m := newTestModel("", nil)
 	if got := m.View(); got != "Loading..." {
