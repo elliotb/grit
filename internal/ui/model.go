@@ -19,20 +19,28 @@ type logResultMsg struct {
 	err    error
 }
 
+// debounceFireMsg is sent after a debounce delay to trigger a reload.
+// The seq field must match Model.debounceSeq to fire; stale ticks are ignored.
+type debounceFireMsg struct{ seq int }
+
+// debounceDuration is the delay before reloading after a filesystem event.
+const debounceDuration = 300 * time.Millisecond
+
 // Model is the root bubbletea model for grit.
 type Model struct {
-	gtClient  *gt.Client
-	viewport  viewport.Model
-	statusBar statusBar
-	keys      keyMap
-	ready     bool
-	branches  []*gt.Branch
-	rawOutput string
-	err       error
-	width     int
-	height    int
-	gitDir    string
-	watcher   *fsnotify.Watcher
+	gtClient    *gt.Client
+	viewport    viewport.Model
+	statusBar   statusBar
+	keys        keyMap
+	ready       bool
+	branches    []*gt.Branch
+	rawOutput   string
+	err         error
+	width       int
+	height      int
+	gitDir      string
+	watcher     *fsnotify.Watcher
+	debounceSeq int
 }
 
 // New creates a new root model. If gitDir is non-empty, a file watcher is
@@ -123,7 +131,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case gitChangeMsg:
-		cmds = append(cmds, m.loadLog(), waitForChange(m.watcher))
+		m.debounceSeq++
+		seq := m.debounceSeq
+		cmds = append(cmds,
+			tea.Tick(debounceDuration, func(time.Time) tea.Msg {
+				return debounceFireMsg{seq: seq}
+			}),
+			waitForChange(m.watcher),
+		)
+
+	case debounceFireMsg:
+		if msg.seq == m.debounceSeq {
+			cmds = append(cmds, m.loadLog())
+		}
 
 	case watcherErrMsg:
 		m.statusBar.setMessage("Watch error: "+msg.err.Error(), true)

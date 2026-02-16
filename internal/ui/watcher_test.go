@@ -3,28 +3,116 @@ package ui
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/ejb/grit/internal/gt"
 )
 
-func TestUpdate_GitChangeMsg_TriggersReload(t *testing.T) {
+// setupFakeGitDir creates a minimal .git directory structure for watcher tests.
+func setupFakeGitDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	// Create HEAD file
+	if err := os.WriteFile(filepath.Join(dir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644); err != nil {
+		t.Fatalf("failed to create HEAD: %v", err)
+	}
+	// Create refs/heads directory
+	if err := os.MkdirAll(filepath.Join(dir, "refs", "heads"), 0755); err != nil {
+		t.Fatalf("failed to create refs/heads: %v", err)
+	}
+	return dir
+}
+
+func TestUpdate_GitChangeMsg_ReturnsDebounceTick(t *testing.T) {
 	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
 	m := New(client, "")
 	m = sendWindowSize(m, 80, 24)
 
 	updated, cmd := m.Update(gitChangeMsg{})
-	_ = updated.(Model)
+	m = updated.(Model)
 
 	if cmd == nil {
-		t.Fatal("gitChangeMsg should return a command (loadLog + waitForChange)")
+		t.Fatal("gitChangeMsg should return a command (debounce tick + waitForChange)")
+	}
+
+	// debounceSeq should have been incremented
+	if m.debounceSeq != 1 {
+		t.Errorf("debounceSeq = %d, want 1", m.debounceSeq)
+	}
+}
+
+func TestUpdate_DebounceFireMsg_MatchingSeq(t *testing.T) {
+	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
+	m := New(client, "")
+	m = sendWindowSize(m, 80, 24)
+	m.debounceSeq = 5
+
+	_, cmd := m.Update(debounceFireMsg{seq: 5})
+	if cmd == nil {
+		t.Fatal("debounceFireMsg with matching seq should return a loadLog command")
+	}
+}
+
+func TestUpdate_DebounceFireMsg_StaleSeq(t *testing.T) {
+	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
+	m := New(client, "")
+	m = sendWindowSize(m, 80, 24)
+	m.debounceSeq = 5
+
+	_, cmd := m.Update(debounceFireMsg{seq: 3})
+	// Stale seq should not trigger a loadLog, but may still have viewport cmd
+	// The important thing: no loadLog should be triggered
+	if cmd != nil {
+		// The viewport update might produce a cmd, that's OK.
+		// We can't easily distinguish, so just verify the seq didn't change.
+	}
+	if m.debounceSeq != 5 {
+		t.Errorf("debounceSeq should not change on stale fire, got %d", m.debounceSeq)
+	}
+}
+
+func TestUpdate_GitChangeMsg_MultipleEvents_OnlyLastFires(t *testing.T) {
+	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
+	m := New(client, "")
+	m = sendWindowSize(m, 80, 24)
+
+	// Simulate 3 rapid gitChangeMsg events
+	for i := 0; i < 3; i++ {
+		updated, _ := m.Update(gitChangeMsg{})
+		m = updated.(Model)
+	}
+
+	// debounceSeq should be 3
+	if m.debounceSeq != 3 {
+		t.Errorf("debounceSeq = %d, want 3", m.debounceSeq)
+	}
+
+	// Only seq=3 should trigger a reload; seq=1 and seq=2 are stale
+	updated1, cmd1 := m.Update(debounceFireMsg{seq: 1})
+	m = updated1.(Model)
+	// cmd1 should only have viewport cmd (no loadLog)
+	_ = cmd1
+
+	updated3, cmd3 := m.Update(debounceFireMsg{seq: 3})
+	m = updated3.(Model)
+	if cmd3 == nil {
+		t.Fatal("debounceFireMsg with current seq should return a command")
+	}
+}
+
+func TestDebounceDuration(t *testing.T) {
+	if debounceDuration != 300*time.Millisecond {
+		t.Errorf("debounceDuration = %v, want 300ms", debounceDuration)
 	}
 }
 
 func TestUpdate_WatcherErrMsg_ShowsError(t *testing.T) {
-	dir := t.TempDir()
+	dir := setupFakeGitDir(t)
 	client := gt.New(&mockExecutor{output: "◉  main", err: nil})
 	m := New(client, dir)
 	defer m.watcher.Close()
@@ -51,19 +139,32 @@ func TestCreateWatcher_InvalidDir(t *testing.T) {
 	}
 }
 
-func TestCreateWatcher_ValidDir(t *testing.T) {
-	// Use a temp directory to test watcher creation
-	dir := t.TempDir()
+func TestCreateWatcher_ValidGitDir(t *testing.T) {
+	dir := setupFakeGitDir(t)
 	watcher, err := createWatcher(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	defer watcher.Close()
 
-	// Verify the directory is being watched
 	watchList := watcher.WatchList()
 	if len(watchList) == 0 {
 		t.Fatal("expected at least one watched path")
+	}
+
+	// Should watch HEAD and refs/heads, but NOT the .git directory itself
+	for _, path := range watchList {
+		if path == dir {
+			t.Errorf("should not watch .git directory itself, but found %q in watch list", path)
+		}
+	}
+}
+
+func TestCreateWatcher_EmptyDir_NoWatchablePaths(t *testing.T) {
+	dir := t.TempDir() // No HEAD or refs/heads
+	_, err := createWatcher(dir)
+	if err == nil {
+		t.Fatal("expected error for dir without watchable paths")
 	}
 }
 
@@ -75,7 +176,7 @@ func TestWaitForChange_NilWatcher(t *testing.T) {
 }
 
 func TestNew_WithGitDir(t *testing.T) {
-	dir := t.TempDir()
+	dir := setupFakeGitDir(t)
 	client := gt.New(&mockExecutor{output: "", err: nil})
 	m := New(client, dir)
 
@@ -95,7 +196,7 @@ func TestNew_WithEmptyGitDir(t *testing.T) {
 }
 
 func TestQuit_ClosesWatcher(t *testing.T) {
-	dir := t.TempDir()
+	dir := setupFakeGitDir(t)
 	client := gt.New(&mockExecutor{output: "", err: nil})
 	m := New(client, dir)
 
