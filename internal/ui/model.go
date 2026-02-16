@@ -151,21 +151,17 @@ func runAction(action, successMsg string, fn func(ctx context.Context) error) te
 	}
 }
 
-// loadDiffData fetches parent branch and file list for the given branch.
-func (m Model) loadDiffData(branchName string) tea.Cmd {
+// loadDiffData fetches the file list for a branch diffed against its parent.
+func (m Model) loadDiffData(parentBranch, branchName string) tea.Cmd {
 	client := m.gtClient
 	return func() tea.Msg {
 		ctx := context.Background()
-		parent, err := client.Parent(ctx, branchName)
-		if err != nil {
-			return diffDataMsg{branchName: branchName, err: err}
-		}
-		statOutput, err := client.DiffStat(ctx, parent, branchName)
+		statOutput, err := client.DiffStat(ctx, parentBranch, branchName)
 		if err != nil {
 			return diffDataMsg{branchName: branchName, err: err}
 		}
 		files := parseDiffStat(statOutput)
-		return diffDataMsg{branchName: branchName, parentBranch: parent, files: files}
+		return diffDataMsg{branchName: branchName, parentBranch: parentBranch, files: files}
 	}
 }
 
@@ -335,11 +331,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.Diff):
 			if branch := m.selectedBranch(); branch != nil {
-				m.running = true
 				name := branch.Name
-				spinnerCmd := m.statusBar.startSpinner("Loading diff for " + name + "...")
-				diffCmd := m.loadDiffData(name)
-				cmds = append(cmds, spinnerCmd, diffCmd)
+				parent, ok := gt.FindParent(m.branches, name)
+				if !ok {
+					m.statusBar.setMessage("No parent branch for "+name, true)
+				} else {
+					m.running = true
+					spinnerCmd := m.statusBar.startSpinner("Loading diff for " + name + "...")
+					diffCmd := m.loadDiffData(parent, name)
+					cmds = append(cmds, spinnerCmd, diffCmd)
+				}
 			}
 		}
 

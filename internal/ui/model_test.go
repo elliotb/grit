@@ -763,13 +763,8 @@ func TestActionKeys_NoOpOnEmptyTree(t *testing.T) {
 // diffMock creates a mockExecutor that handles both gt and git commands for diff tests.
 func diffMock(logOutput string) *mockExecutor {
 	return &mockExecutor{fn: func(ctx context.Context, name string, args ...string) (string, error) {
-		if name == "gt" && len(args) > 0 {
-			switch args[0] {
-			case "log":
-				return logOutput, nil
-			case "parent":
-				return "main\n", nil
-			}
+		if name == "gt" && len(args) > 0 && args[0] == "log" {
+			return logOutput, nil
 		}
 		if name == "git" && len(args) > 0 && args[0] == "diff" {
 			for _, a := range args {
@@ -809,6 +804,27 @@ func TestDiffKey_OpensLoading(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("expected commands from d key")
+	}
+}
+
+func TestDiffKey_OnTrunk_ShowsError(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.cursor = 0 // on "main" (trunk/root)
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'d'}}))
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("d on trunk should not start running")
+	}
+	if m.mode != modeTree {
+		t.Error("should stay in tree mode")
+	}
+	if !m.statusBar.isError {
+		t.Error("status bar should show error")
+	}
+	if !containsString(m.statusBar.message, "No parent branch") {
+		t.Errorf("message = %q, want to contain 'No parent branch'", m.statusBar.message)
 	}
 }
 

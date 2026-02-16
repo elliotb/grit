@@ -21,43 +21,6 @@ func assertCommand(t *testing.T, mock *mockExecutor, wantName string, wantArgs [
 	}
 }
 
-func TestParent_Success(t *testing.T) {
-	mock := &mockExecutor{output: "main\n"}
-	client := New(mock)
-
-	got, err := client.Parent(context.Background(), "feature-a")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != "main" {
-		t.Errorf("got %q, want %q", got, "main")
-	}
-	assertCommand(t, mock, "gt", []string{"parent", "--branch", "feature-a", "--no-interactive"})
-}
-
-func TestParent_TrimsWhitespace(t *testing.T) {
-	mock := &mockExecutor{output: "  main  \n"}
-	client := New(mock)
-
-	got, err := client.Parent(context.Background(), "feature-a")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != "main" {
-		t.Errorf("got %q, want %q", got, "main")
-	}
-}
-
-func TestParent_Error(t *testing.T) {
-	mock := &mockExecutor{err: errors.New("no parent")}
-	client := New(mock)
-
-	_, err := client.Parent(context.Background(), "main")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
 func TestDiffStat_Success(t *testing.T) {
 	want := " file.go | 5 +++--\n 1 file changed\n"
 	mock := &mockExecutor{output: want}
@@ -105,5 +68,97 @@ func TestDiffFile_Error(t *testing.T) {
 	_, err := client.DiffFile(context.Background(), "main", "feature-a", "file.go")
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestFindParent_DirectChild(t *testing.T) {
+	branches := []*Branch{
+		{Name: "main", Children: []*Branch{
+			{Name: "feature-a"},
+		}},
+	}
+	parent, ok := FindParent(branches, "feature-a")
+	if !ok {
+		t.Fatal("expected to find parent")
+	}
+	if parent != "main" {
+		t.Errorf("got %q, want %q", parent, "main")
+	}
+}
+
+func TestFindParent_NestedChild(t *testing.T) {
+	branches := []*Branch{
+		{Name: "main", Children: []*Branch{
+			{Name: "feature-a", Children: []*Branch{
+				{Name: "feature-b"},
+			}},
+		}},
+	}
+	parent, ok := FindParent(branches, "feature-b")
+	if !ok {
+		t.Fatal("expected to find parent")
+	}
+	if parent != "feature-a" {
+		t.Errorf("got %q, want %q", parent, "feature-a")
+	}
+}
+
+func TestFindParent_RootBranch(t *testing.T) {
+	branches := []*Branch{
+		{Name: "main", Children: []*Branch{
+			{Name: "feature-a"},
+		}},
+	}
+	_, ok := FindParent(branches, "main")
+	if ok {
+		t.Error("root branch should have no parent")
+	}
+}
+
+func TestFindParent_NotFound(t *testing.T) {
+	branches := []*Branch{
+		{Name: "main", Children: []*Branch{
+			{Name: "feature-a"},
+		}},
+	}
+	_, ok := FindParent(branches, "nonexistent")
+	if ok {
+		t.Error("nonexistent branch should not be found")
+	}
+}
+
+func TestFindParent_EmptyTree(t *testing.T) {
+	_, ok := FindParent(nil, "feature-a")
+	if ok {
+		t.Error("should not find parent in empty tree")
+	}
+}
+
+func TestFindParent_MultipleBranches(t *testing.T) {
+	branches := []*Branch{
+		{Name: "main", Children: []*Branch{
+			{Name: "feature-a", Children: []*Branch{
+				{Name: "feature-a2"},
+			}},
+			{Name: "feature-b"},
+		}},
+	}
+
+	// feature-b's parent should be main
+	parent, ok := FindParent(branches, "feature-b")
+	if !ok {
+		t.Fatal("expected to find parent for feature-b")
+	}
+	if parent != "main" {
+		t.Errorf("got %q, want %q", parent, "main")
+	}
+
+	// feature-a2's parent should be feature-a
+	parent, ok = FindParent(branches, "feature-a2")
+	if !ok {
+		t.Fatal("expected to find parent for feature-a2")
+	}
+	if parent != "feature-a" {
+		t.Errorf("got %q, want %q", parent, "feature-a")
 	}
 }

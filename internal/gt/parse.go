@@ -168,6 +168,32 @@ func stripAnnotation(name string) string {
 	return name
 }
 
+// FindParent searches the branch tree for the parent of the named branch.
+// Returns the parent name and true if found, or ("", false) if the branch
+// is a root or not present in the tree.
+func FindParent(branches []*Branch, name string) (string, bool) {
+	for _, root := range branches {
+		if found, parent := findParentRecursive(root, name); found {
+			return parent, true
+		}
+	}
+	return "", false
+}
+
+// findParentRecursive walks the tree rooted at node, returning (true, parentName)
+// if name is found among its descendants.
+func findParentRecursive(node *Branch, name string) (bool, string) {
+	for _, child := range node.Children {
+		if child.Name == name {
+			return true, node.Name
+		}
+		if found, parent := findParentRecursive(child, name); found {
+			return true, parent
+		}
+	}
+	return false, ""
+}
+
 // stripConnectors removes tree-drawing characters (─, ┘) from the string.
 func stripConnectors(s string) string {
 	var b strings.Builder
