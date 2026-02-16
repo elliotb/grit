@@ -338,36 +338,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.StackSubmit):
 			if branch := m.selectedBranch(); branch != nil {
-				m.running = true
-				name := branch.Name
-				client := m.gtClient
-				spinnerCmd := m.statusBar.startSpinner("Submitting stack (" + name + ")...")
-				actionCmd := runAction("submit", "Stack submitted", func(ctx context.Context) error {
-					return client.StackSubmit(ctx, name)
-				})
-				cmds = append(cmds, spinnerCmd, actionCmd)
+				if _, hasParent := gt.FindParent(m.branches, branch.Name); !hasParent {
+					m.statusBar.setMessage("Cannot submit trunk branch", true)
+				} else {
+					m.running = true
+					name := branch.Name
+					client := m.gtClient
+					spinnerCmd := m.statusBar.startSpinner("Submitting stack (" + name + ")...")
+					actionCmd := runAction("submit", "Stack submitted", func(ctx context.Context) error {
+						return client.StackSubmit(ctx, name)
+					})
+					cmds = append(cmds, spinnerCmd, actionCmd)
+				}
 			}
 		case key.Matches(msg, m.keys.DownstackSubmit):
 			if branch := m.selectedBranch(); branch != nil {
-				m.running = true
-				name := branch.Name
-				client := m.gtClient
-				spinnerCmd := m.statusBar.startSpinner("Submitting downstack (" + name + ")...")
-				actionCmd := runAction("downstack-submit", "Downstack submitted", func(ctx context.Context) error {
-					return client.DownstackSubmit(ctx, name)
-				})
-				cmds = append(cmds, spinnerCmd, actionCmd)
+				if _, hasParent := gt.FindParent(m.branches, branch.Name); !hasParent {
+					m.statusBar.setMessage("Cannot submit trunk branch", true)
+				} else {
+					m.running = true
+					name := branch.Name
+					client := m.gtClient
+					spinnerCmd := m.statusBar.startSpinner("Submitting downstack (" + name + ")...")
+					actionCmd := runAction("downstack-submit", "Downstack submitted", func(ctx context.Context) error {
+						return client.DownstackSubmit(ctx, name)
+					})
+					cmds = append(cmds, spinnerCmd, actionCmd)
+				}
 			}
 		case key.Matches(msg, m.keys.Restack):
 			if branch := m.selectedBranch(); branch != nil {
-				m.running = true
-				name := branch.Name
-				client := m.gtClient
-				spinnerCmd := m.statusBar.startSpinner("Restacking (" + name + ")...")
-				actionCmd := runAction("restack", "Restacked", func(ctx context.Context) error {
-					return client.StackRestack(ctx, name)
-				})
-				cmds = append(cmds, spinnerCmd, actionCmd)
+				if _, hasParent := gt.FindParent(m.branches, branch.Name); !hasParent {
+					m.statusBar.setMessage("Cannot restack trunk branch", true)
+				} else {
+					m.running = true
+					name := branch.Name
+					client := m.gtClient
+					spinnerCmd := m.statusBar.startSpinner("Restacking (" + name + ")...")
+					actionCmd := runAction("restack", "Restacked", func(ctx context.Context) error {
+						return client.StackRestack(ctx, name)
+					})
+					cmds = append(cmds, spinnerCmd, actionCmd)
+				}
 			}
 		case key.Matches(msg, m.keys.Fetch):
 			m.running = true
@@ -440,7 +452,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.err = msg.err
 			m.rawOutput = msg.output
-			m.statusBar.setMessage("Error: "+msg.err.Error(), true)
+			errMsg := msg.err.Error()
+			switch {
+			case strings.Contains(errMsg, "executable file not found") || strings.Contains(errMsg, "not found in"):
+				m.statusBar.setMessage("gt CLI not found — install from https://graphite.dev", true)
+			case strings.Contains(errMsg, "detached HEAD") || strings.Contains(errMsg, "not a branch"):
+				m.statusBar.setMessage("Detached HEAD — checkout a branch to view stacks", true)
+			default:
+				// Preserve existing tree on refresh failure.
+				if len(m.branches) > 0 {
+					m.statusBar.setMessage("Refresh failed: "+errMsg, true)
+				} else {
+					m.statusBar.setMessage("Error: "+errMsg, true)
+				}
+			}
 		} else {
 			m.err = nil
 			m.rawOutput = msg.output
@@ -449,8 +474,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Parse and render the tree, falling back to raw output on parse error.
-		content := m.rawOutput
+		// On error, keep existing tree content if available.
 		if m.err == nil {
+			content := m.rawOutput
 			branches, parseErr := gt.ParseLogShort(m.rawOutput)
 			if parseErr == nil {
 				m.branches = branches
@@ -463,10 +489,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				content = renderTree(m.displayEntries, m.cursor)
 				cmds = append(cmds, m.loadPRInfo())
 			}
-		}
-
-		if m.ready {
-			m.viewport.SetContent(content)
+			if m.ready {
+				m.viewport.SetContent(content)
+			}
 		}
 
 	case diffDataMsg:
@@ -497,7 +522,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.running = false
 		m.statusBar.stopSpinner()
 		if msg.err != nil {
-			m.statusBar.setMessage("Error: "+msg.err.Error(), true)
+			errMsg := msg.err.Error()
+			if strings.Contains(errMsg, "conflict") || strings.Contains(errMsg, "CONFLICT") {
+				m.statusBar.setMessage("Conflict detected — resolve in terminal, then press f to refresh", true)
+			} else {
+				m.statusBar.setMessage("Error: "+errMsg, true)
+			}
+			// Reload tree after errors to reflect actual repo state.
+			cmds = append(cmds, m.loadLog())
 		} else {
 			m.statusBar.setSuccessMessage(msg.message)
 			// Reload tree after successful actions (except openpr which doesn't change git state).

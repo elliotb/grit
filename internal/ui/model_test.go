@@ -658,15 +658,16 @@ func recordingMock() (*mockExecutor, *[]callRecord) {
 func TestActionKeys_TargetSelectedBranch(t *testing.T) {
 	// Verify that branch-specific actions target the cursor-selected branch,
 	// not the checked-out (IsCurrent) branch.
+	// Uses feature-base (index 1) since trunk actions are now guarded.
 	tests := []struct {
 		name     string
 		key      rune
 		wantArgs []string // expected gt CLI args
 	}{
-		{"submit stack", 's', []string{"stack", "submit", "--no-interactive", "--branch", "main"}},
-		{"submit downstack", 'S', []string{"downstack", "submit", "--no-interactive", "--branch", "main"}},
-		{"restack", 'r', []string{"stack", "restack", "--no-interactive", "--branch", "main"}},
-		{"open PR", 'o', []string{"pr", "main"}},
+		{"submit stack", 's', []string{"stack", "submit", "--no-interactive", "--branch", "feature-base"}},
+		{"submit downstack", 'S', []string{"downstack", "submit", "--no-interactive", "--branch", "feature-base"}},
+		{"restack", 'r', []string{"stack", "restack", "--no-interactive", "--branch", "feature-base"}},
+		{"open PR", 'o', []string{"pr", "feature-base"}},
 	}
 
 	for _, tt := range tests {
@@ -688,8 +689,8 @@ func TestActionKeys_TargetSelectedBranch(t *testing.T) {
 			updated, _ := m.Update(logResultMsg{output: logOutput})
 			m = updated.(Model)
 
-			// Cursor is on feature-top (IsCurrent). Move to main (index 0).
-			m.cursor = 0
+			// Move cursor to feature-base (index 1).
+			m.cursor = 1
 
 			// Clear recorded calls from setup.
 			*calls = nil
@@ -1435,6 +1436,138 @@ func TestApplyPRInfo(t *testing.T) {
 	}
 	if branches[0].Children[0].Children[0].PR.Number != 20 {
 		t.Errorf("b PR = %d, want 20", branches[0].Children[0].Children[0].PR.Number)
+	}
+}
+
+// --- Error handling tests ---
+
+func TestLogResult_GtNotFound(t *testing.T) {
+	m := newTestModel("", nil)
+	m = sendWindowSize(m, 80, 24)
+
+	updated, _ := m.Update(logResultMsg{err: errors.New("executable file not found in $PATH")})
+	m = updated.(Model)
+
+	if !m.statusBar.isError {
+		t.Error("status bar should show error")
+	}
+	if !containsString(m.statusBar.message, "gt CLI not found") {
+		t.Errorf("message = %q, want gt CLI not found message", m.statusBar.message)
+	}
+}
+
+func TestLogResult_DetachedHead(t *testing.T) {
+	m := newTestModel("", nil)
+	m = sendWindowSize(m, 80, 24)
+
+	updated, _ := m.Update(logResultMsg{err: errors.New("detached HEAD state")})
+	m = updated.(Model)
+
+	if !m.statusBar.isError {
+		t.Error("status bar should show error")
+	}
+	if !containsString(m.statusBar.message, "Detached HEAD") {
+		t.Errorf("message = %q, want detached HEAD message", m.statusBar.message)
+	}
+}
+
+func TestLogResult_ErrorPreservesExistingTree(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+
+	// Verify tree is loaded.
+	if len(m.branches) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(m.branches))
+	}
+
+	// Send an error — tree should be preserved.
+	updated, _ := m.Update(logResultMsg{err: errors.New("some transient error")})
+	m = updated.(Model)
+
+	if len(m.branches) != 1 {
+		t.Error("existing tree should be preserved on error")
+	}
+	if !containsString(m.statusBar.message, "Refresh failed") {
+		t.Errorf("message = %q, want 'Refresh failed' prefix", m.statusBar.message)
+	}
+
+	// View should still show tree content.
+	view := m.View()
+	if !containsString(view, "feature-top") {
+		t.Error("view should still show existing tree")
+	}
+}
+
+func TestActionResult_Conflict(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+
+	updated, _ := m.Update(actionResultMsg{action: "restack", err: errors.New("CONFLICT in file.go")})
+	m = updated.(Model)
+
+	if !m.statusBar.isError {
+		t.Error("status bar should show error")
+	}
+	if !containsString(m.statusBar.message, "Conflict detected") {
+		t.Errorf("message = %q, want conflict message", m.statusBar.message)
+	}
+}
+
+func TestActionResult_ErrorReloadsTree(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+
+	_, cmd := m.Update(actionResultMsg{action: "restack", err: errors.New("some error")})
+
+	if cmd == nil {
+		t.Error("action error should trigger tree reload")
+	}
+}
+
+func TestSubmitOnTrunk_ShowsError(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.cursor = 0 // on trunk
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'s'}}))
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("submit on trunk should not start action")
+	}
+	if !m.statusBar.isError {
+		t.Error("status bar should show error")
+	}
+	if !containsString(m.statusBar.message, "Cannot submit trunk") {
+		t.Errorf("message = %q, want trunk error", m.statusBar.message)
+	}
+}
+
+func TestDownstackSubmitOnTrunk_ShowsError(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.cursor = 0
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'S'}}))
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("downstack submit on trunk should not start action")
+	}
+	if !containsString(m.statusBar.message, "Cannot submit trunk") {
+		t.Errorf("message = %q, want trunk error", m.statusBar.message)
+	}
+}
+
+func TestRestackOnTrunk_ShowsError(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.cursor = 0
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'r'}}))
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("restack on trunk should not start action")
+	}
+	if !containsString(m.statusBar.message, "Cannot restack trunk") {
+		t.Errorf("message = %q, want trunk error", m.statusBar.message)
 	}
 }
 
