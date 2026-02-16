@@ -53,21 +53,21 @@ func (c *Client) Checkout(ctx context.Context, branchName string) error {
 	return err
 }
 
-// StackSubmit runs `gt stack submit --no-interactive`.
-func (c *Client) StackSubmit(ctx context.Context) error {
-	_, err := c.executor.Execute(ctx, "gt", "stack", "submit", "--no-interactive")
+// StackSubmit runs `gt stack submit --no-interactive --branch <branchName>`.
+func (c *Client) StackSubmit(ctx context.Context, branchName string) error {
+	_, err := c.executor.Execute(ctx, "gt", "stack", "submit", "--no-interactive", "--branch", branchName)
 	return err
 }
 
-// DownstackSubmit runs `gt downstack submit --no-interactive`.
-func (c *Client) DownstackSubmit(ctx context.Context) error {
-	_, err := c.executor.Execute(ctx, "gt", "downstack", "submit", "--no-interactive")
+// DownstackSubmit runs `gt downstack submit --no-interactive --branch <branchName>`.
+func (c *Client) DownstackSubmit(ctx context.Context, branchName string) error {
+	_, err := c.executor.Execute(ctx, "gt", "downstack", "submit", "--no-interactive", "--branch", branchName)
 	return err
 }
 
-// StackRestack runs `gt stack restack --no-interactive`.
-func (c *Client) StackRestack(ctx context.Context) error {
-	_, err := c.executor.Execute(ctx, "gt", "stack", "restack", "--no-interactive")
+// StackRestack runs `gt stack restack --no-interactive --branch <branchName>`.
+func (c *Client) StackRestack(ctx context.Context, branchName string) error {
+	_, err := c.executor.Execute(ctx, "gt", "stack", "restack", "--no-interactive", "--branch", branchName)
 	return err
 }
 
@@ -83,8 +83,8 @@ func (c *Client) Sync(ctx context.Context) error {
 	return err
 }
 
-// OpenPR runs `gt pr` to open the current branch's PR in the browser.
-func (c *Client) OpenPR(ctx context.Context) error {
-	_, err := c.executor.Execute(ctx, "gt", "pr")
+// OpenPR runs `gt pr <branchName>` to open the branch's PR in the browser.
+func (c *Client) OpenPR(ctx context.Context, branchName string) error {
+	_, err := c.executor.Execute(ctx, "gt", "pr", branchName)
 	return err
 }

@@ -96,18 +96,18 @@ func TestStackSubmit_Success(t *testing.T) {
 	mock := &mockExecutor{}
 	client := New(mock)
 
-	err := client.StackSubmit(context.Background())
+	err := client.StackSubmit(context.Background(), "feature-a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertArgs(t, mock, []string{"stack", "submit", "--no-interactive"})
+	assertArgs(t, mock, []string{"stack", "submit", "--no-interactive", "--branch", "feature-a"})
 }
 
 func TestStackSubmit_Error(t *testing.T) {
 	mock := &mockExecutor{err: errors.New("submit failed")}
 	client := New(mock)
 
-	err := client.StackSubmit(context.Background())
+	err := client.StackSubmit(context.Background(), "feature-a")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -117,18 +117,18 @@ func TestDownstackSubmit_Success(t *testing.T) {
 	mock := &mockExecutor{}
 	client := New(mock)
 
-	err := client.DownstackSubmit(context.Background())
+	err := client.DownstackSubmit(context.Background(), "feature-a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertArgs(t, mock, []string{"downstack", "submit", "--no-interactive"})
+	assertArgs(t, mock, []string{"downstack", "submit", "--no-interactive", "--branch", "feature-a"})
 }
 
 func TestDownstackSubmit_Error(t *testing.T) {
 	mock := &mockExecutor{err: errors.New("submit failed")}
 	client := New(mock)
 
-	err := client.DownstackSubmit(context.Background())
+	err := client.DownstackSubmit(context.Background(), "feature-a")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -138,18 +138,18 @@ func TestStackRestack_Success(t *testing.T) {
 	mock := &mockExecutor{}
 	client := New(mock)
 
-	err := client.StackRestack(context.Background())
+	err := client.StackRestack(context.Background(), "feature-a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertArgs(t, mock, []string{"stack", "restack", "--no-interactive"})
+	assertArgs(t, mock, []string{"stack", "restack", "--no-interactive", "--branch", "feature-a"})
 }
 
 func TestStackRestack_Error(t *testing.T) {
 	mock := &mockExecutor{err: errors.New("restack failed")}
 	client := New(mock)
 
-	err := client.StackRestack(context.Background())
+	err := client.StackRestack(context.Background(), "feature-a")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -201,18 +201,18 @@ func TestOpenPR_Success(t *testing.T) {
 	mock := &mockExecutor{}
 	client := New(mock)
 
-	err := client.OpenPR(context.Background())
+	err := client.OpenPR(context.Background(), "feature-a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertArgs(t, mock, []string{"pr"})
+	assertArgs(t, mock, []string{"pr", "feature-a"})
 }
 
 func TestOpenPR_Error(t *testing.T) {
 	mock := &mockExecutor{err: errors.New("no PR found")}
 	client := New(mock)
 
-	err := client.OpenPR(context.Background())
+	err := client.OpenPR(context.Background(), "feature-a")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

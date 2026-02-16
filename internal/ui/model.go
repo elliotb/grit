@@ -187,29 +187,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, spinnerCmd, actionCmd)
 			}
 		case key.Matches(msg, m.keys.StackSubmit):
-			m.running = true
-			client := m.gtClient
-			spinnerCmd := m.statusBar.startSpinner("Submitting stack...")
-			actionCmd := runAction("submit", "Stack submitted", func(ctx context.Context) error {
-				return client.StackSubmit(ctx)
-			})
-			cmds = append(cmds, spinnerCmd, actionCmd)
+			if branch := m.selectedBranch(); branch != nil {
+				m.running = true
+				name := branch.Name
+				client := m.gtClient
+				spinnerCmd := m.statusBar.startSpinner("Submitting stack (" + name + ")...")
+				actionCmd := runAction("submit", "Stack submitted", func(ctx context.Context) error {
+					return client.StackSubmit(ctx, name)
+				})
+				cmds = append(cmds, spinnerCmd, actionCmd)
+			}
 		case key.Matches(msg, m.keys.DownstackSubmit):
-			m.running = true
-			client := m.gtClient
-			spinnerCmd := m.statusBar.startSpinner("Submitting downstack...")
-			actionCmd := runAction("downstack-submit", "Downstack submitted", func(ctx context.Context) error {
-				return client.DownstackSubmit(ctx)
-			})
-			cmds = append(cmds, spinnerCmd, actionCmd)
+			if branch := m.selectedBranch(); branch != nil {
+				m.running = true
+				name := branch.Name
+				client := m.gtClient
+				spinnerCmd := m.statusBar.startSpinner("Submitting downstack (" + name + ")...")
+				actionCmd := runAction("downstack-submit", "Downstack submitted", func(ctx context.Context) error {
+					return client.DownstackSubmit(ctx, name)
+				})
+				cmds = append(cmds, spinnerCmd, actionCmd)
+			}
 		case key.Matches(msg, m.keys.Restack):
-			m.running = true
-			client := m.gtClient
-			spinnerCmd := m.statusBar.startSpinner("Restacking...")
-			actionCmd := runAction("restack", "Restacked", func(ctx context.Context) error {
-				return client.StackRestack(ctx)
-			})
-			cmds = append(cmds, spinnerCmd, actionCmd)
+			if branch := m.selectedBranch(); branch != nil {
+				m.running = true
+				name := branch.Name
+				client := m.gtClient
+				spinnerCmd := m.statusBar.startSpinner("Restacking (" + name + ")...")
+				actionCmd := runAction("restack", "Restacked", func(ctx context.Context) error {
+					return client.StackRestack(ctx, name)
+				})
+				cmds = append(cmds, spinnerCmd, actionCmd)
+			}
 		case key.Matches(msg, m.keys.Fetch):
 			m.running = true
 			client := m.gtClient
@@ -227,13 +236,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			cmds = append(cmds, spinnerCmd, actionCmd)
 		case key.Matches(msg, m.keys.OpenPR):
-			m.running = true
-			client := m.gtClient
-			spinnerCmd := m.statusBar.startSpinner("Opening PR...")
-			actionCmd := runAction("openpr", "Opened PR", func(ctx context.Context) error {
-				return client.OpenPR(ctx)
-			})
-			cmds = append(cmds, spinnerCmd, actionCmd)
+			if branch := m.selectedBranch(); branch != nil {
+				m.running = true
+				name := branch.Name
+				client := m.gtClient
+				spinnerCmd := m.statusBar.startSpinner("Opening PR (" + name + ")...")
+				actionCmd := runAction("openpr", "Opened PR for "+name, func(ctx context.Context) error {
+					return client.OpenPR(ctx, name)
+				})
+				cmds = append(cmds, spinnerCmd, actionCmd)
+			}
 		}
 
 	case tea.WindowSizeMsg:

@@ -503,12 +503,13 @@ func TestActionKeys(t *testing.T) {
 		wantRun  bool
 		wantSpin string
 	}{
-		{"submit stack", 's', true, "Submitting stack..."},
-		{"submit downstack", 'S', true, "Submitting downstack..."},
-		{"restack", 'r', true, "Restacking..."},
+		// Cursor starts on feature-top (IsCurrent), so branch-specific actions include it.
+		{"submit stack", 's', true, "Submitting stack (feature-top)..."},
+		{"submit downstack", 'S', true, "Submitting downstack (feature-top)..."},
+		{"restack", 'r', true, "Restacking (feature-top)..."},
 		{"fetch", 'f', true, "Fetching..."},
 		{"sync", 'y', true, "Syncing..."},
-		{"open PR", 'o', true, "Opening PR..."},
+		{"open PR", 'o', true, "Opening PR (feature-top)..."},
 	}
 
 	for _, tt := range tests {
@@ -609,6 +610,124 @@ func TestWindowSize_AccountsForLegend(t *testing.T) {
 	// Viewport height should be total height minus 2 (legend + status bar)
 	if m.viewport.Height != 22 {
 		t.Errorf("viewport height = %d, want 22 (24 - 2)", m.viewport.Height)
+	}
+}
+
+// recordingMock creates a mockExecutor that records all calls.
+type callRecord struct {
+	name string
+	args []string
+}
+
+func recordingMock() (*mockExecutor, *[]callRecord) {
+	var calls []callRecord
+	mock := &mockExecutor{fn: func(ctx context.Context, name string, args ...string) (string, error) {
+		calls = append(calls, callRecord{name: name, args: args})
+		return "", nil
+	}}
+	return mock, &calls
+}
+
+func TestActionKeys_TargetSelectedBranch(t *testing.T) {
+	// Verify that branch-specific actions target the cursor-selected branch,
+	// not the checked-out (IsCurrent) branch.
+	tests := []struct {
+		name     string
+		key      rune
+		wantArgs []string // expected gt CLI args
+	}{
+		{"submit stack", 's', []string{"stack", "submit", "--no-interactive", "--branch", "main"}},
+		{"submit downstack", 'S', []string{"downstack", "submit", "--no-interactive", "--branch", "main"}},
+		{"restack", 'r', []string{"stack", "restack", "--no-interactive", "--branch", "main"}},
+		{"open PR", 'o', []string{"pr", "main"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, calls := recordingMock()
+			// Override the mock to also return log output for loadLog.
+			logOutput := "│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main"
+			mock.fn = func(ctx context.Context, name string, args ...string) (string, error) {
+				*calls = append(*calls, callRecord{name: name, args: args})
+				if len(args) > 0 && args[0] == "log" {
+					return logOutput, nil
+				}
+				return "", nil
+			}
+
+			client := gt.New(mock)
+			m := New(client, "")
+			m = sendWindowSize(m, 80, 24)
+			updated, _ := m.Update(logResultMsg{output: logOutput})
+			m = updated.(Model)
+
+			// Cursor is on feature-top (IsCurrent). Move to main (index 0).
+			m.cursor = 0
+
+			// Clear recorded calls from setup.
+			*calls = nil
+
+			// Press the action key.
+			updated, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{tt.key}}))
+			m = updated.(Model)
+
+			if !m.running {
+				t.Fatal("expected running=true")
+			}
+			if cmd == nil {
+				t.Fatal("expected command")
+			}
+
+			// cmd is a tea.Batch; execute it to get the inner commands, then
+			// run each one to find the actionResultMsg (which triggers the gt call).
+			batchMsg := cmd()
+			if cmds, ok := batchMsg.(tea.BatchMsg); ok {
+				for _, c := range cmds {
+					if c != nil {
+						c()
+					}
+				}
+			}
+
+			if len(*calls) == 0 {
+				t.Fatal("expected gt call, got none")
+			}
+			// Find the action call (skip any spinner-related calls).
+			var got []string
+			for _, c := range *calls {
+				if c.name == "gt" {
+					got = c.args
+					break
+				}
+			}
+			if got == nil {
+				t.Fatal("no gt call found in recorded calls")
+			}
+			if len(got) != len(tt.wantArgs) {
+				t.Fatalf("args = %v, want %v", got, tt.wantArgs)
+			}
+			for i, arg := range tt.wantArgs {
+				if got[i] != arg {
+					t.Errorf("arg[%d] = %q, want %q", i, got[i], arg)
+				}
+			}
+		})
+	}
+}
+
+func TestActionKeys_NoOpOnEmptyTree(t *testing.T) {
+	keys := []rune{'s', 'S', 'r', 'o'}
+	for _, k := range keys {
+		t.Run(string(k), func(t *testing.T) {
+			m := loadedModel("some random output without markers")
+
+			updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{k}}))
+			m = updated.(Model)
+
+			if m.running {
+				t.Errorf("key %c on empty tree should not start action", k)
+			}
+		})
 	}
 }
 
