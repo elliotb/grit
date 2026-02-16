@@ -607,9 +607,36 @@ func TestWindowSize_AccountsForLegend(t *testing.T) {
 	m := newTestModel("", nil)
 	m = sendWindowSize(m, 80, 24)
 
-	// Viewport height should be total height minus 2 (legend + status bar)
+	// Viewport height should be total height minus chrome (legend lines + status bar).
+	// The legend wraps on narrow terminals, so chrome height is dynamic.
+	wantHeight := 24 - m.chromeHeight()
+	if m.viewport.Height != wantHeight {
+		t.Errorf("viewport height = %d, want %d (24 - %d chrome)", m.viewport.Height, wantHeight, m.chromeHeight())
+	}
+}
+
+func TestWindowSize_WideTerminal_LegendOneLine(t *testing.T) {
+	m := newTestModel("", nil)
+	m = sendWindowSize(m, 140, 24)
+
+	// At 140 columns, the legend fits on one line, so chrome = 2.
 	if m.viewport.Height != 22 {
 		t.Errorf("viewport height = %d, want 22 (24 - 2)", m.viewport.Height)
+	}
+}
+
+func TestWindowSize_NarrowTerminal_LegendWraps(t *testing.T) {
+	m := newTestModel("", nil)
+	m = sendWindowSize(m, 60, 24)
+
+	// At 60 columns, the legend wraps to multiple lines.
+	chrome := m.chromeHeight()
+	if chrome <= 2 {
+		t.Errorf("chrome height = %d, want > 2 for narrow terminal", chrome)
+	}
+	wantHeight := 24 - chrome
+	if m.viewport.Height != wantHeight {
+		t.Errorf("viewport height = %d, want %d", m.viewport.Height, wantHeight)
 	}
 }
 

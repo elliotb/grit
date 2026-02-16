@@ -344,8 +344,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		chromeHeight := 2 // legend + status bar
-		viewportHeight := msg.Height - chromeHeight
+		// Set width/height first so chromeHeight() can render the legend at the correct width.
+		m.width = msg.Width
+		m.height = msg.Height
+		m.statusBar.setSize(msg.Width)
+
+		viewportHeight := msg.Height - m.chromeHeight()
 
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, viewportHeight)
@@ -357,9 +361,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.Height = viewportHeight
 		}
 
-		m.width = msg.Width
-		m.height = msg.Height
-		m.statusBar.setSize(msg.Width)
 		if m.mode == modeDiff {
 			m.diff.setSize(msg.Width, viewportHeight)
 		}
@@ -402,9 +403,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.statusBar.setMessage("Error: "+msg.err.Error(), true)
 		} else {
-			chromeHeight := 2 // legend + status bar
 			m.mode = modeDiff
-			m.diff = newDiffView(m.width, m.height-chromeHeight)
+			m.diff = newDiffView(m.width, m.height-m.chromeHeight())
 			m.diff.branchName = msg.branchName
 			m.diff.parentBranch = msg.parentBranch
 			m.diff.setFiles(msg.files)
@@ -513,6 +513,18 @@ func (m Model) diffLegendView() string {
 		{"q", "quit"},
 	}
 	return renderLegend(pairs, m.width)
+}
+
+// chromeHeight returns the number of terminal lines used by chrome (legend + status bar).
+// The legend may wrap to multiple lines on narrow terminals.
+func (m Model) chromeHeight() int {
+	var legend string
+	if m.mode == modeDiff {
+		legend = m.diffLegendView()
+	} else {
+		legend = m.legendView()
+	}
+	return lipgloss.Height(legend) + 1 // +1 for status bar
 }
 
 func (m Model) View() string {
