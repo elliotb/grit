@@ -79,7 +79,8 @@ func TestUpdate_LogResult_Success(t *testing.T) {
 	m := newTestModel("", nil)
 	m = sendWindowSize(m, 80, 24)
 
-	content := "◉ main\n├── feature-a\n└── feature-b"
+	// Use realistic gt log short format
+	content := "│ ◉  feature-a\n│ ◯  feature-b\n◯─┘  main"
 	updated, _ := m.Update(logResultMsg{output: content})
 	m = updated.(Model)
 
@@ -89,6 +90,47 @@ func TestUpdate_LogResult_Success(t *testing.T) {
 	}
 	if !containsString(view, "feature-a") {
 		t.Error("view should contain 'feature-a'")
+	}
+}
+
+func TestUpdate_LogResult_ParsedTree(t *testing.T) {
+	m := newTestModel("", nil)
+	m = sendWindowSize(m, 80, 24)
+
+	content := "│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main"
+	updated, _ := m.Update(logResultMsg{output: content})
+	m = updated.(Model)
+
+	// Verify branches were parsed
+	if len(m.branches) != 1 {
+		t.Fatalf("expected 1 root branch, got %d", len(m.branches))
+	}
+	if m.branches[0].Name != "main" {
+		t.Errorf("root = %q, want %q", m.branches[0].Name, "main")
+	}
+
+	// View should contain tree connector characters from lipgloss/tree
+	view := m.View()
+	if !containsString(view, "feature-top") {
+		t.Error("view should contain 'feature-top'")
+	}
+	if !containsString(view, "feature-base") {
+		t.Error("view should contain 'feature-base'")
+	}
+}
+
+func TestUpdate_LogResult_FallbackOnUnparseable(t *testing.T) {
+	m := newTestModel("", nil)
+	m = sendWindowSize(m, 80, 24)
+
+	// Content that has no branch markers — parser returns empty, renderer shows "(no stacks)"
+	content := "some random output without markers"
+	updated, _ := m.Update(logResultMsg{output: content})
+	m = updated.(Model)
+
+	view := m.View()
+	if !containsString(view, "(no stacks)") {
+		t.Errorf("expected fallback output, got:\n%s", view)
 	}
 }
 

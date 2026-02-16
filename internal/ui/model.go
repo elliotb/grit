@@ -25,7 +25,8 @@ type Model struct {
 	statusBar statusBar
 	keys      keyMap
 	ready     bool
-	content   string
+	branches  []*gt.Branch
+	rawOutput string
 	err       error
 	width     int
 	height    int
@@ -67,7 +68,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, viewportHeight)
-			m.viewport.SetContent(m.content)
+			m.viewport.SetContent(renderTree(m.branches))
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
@@ -81,16 +82,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logResultMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			m.content = msg.output
+			m.rawOutput = msg.output
 			m.statusBar.setMessage("Error: "+msg.err.Error(), true)
 		} else {
 			m.err = nil
-			m.content = msg.output
+			m.rawOutput = msg.output
 			m.statusBar.setMessage("", false)
 			m.statusBar.setRefreshTime(time.Now())
 		}
+
+		// Parse and render the tree, falling back to raw output on parse error.
+		content := m.rawOutput
+		if m.err == nil {
+			branches, parseErr := gt.ParseLogShort(m.rawOutput)
+			if parseErr == nil {
+				m.branches = branches
+				content = renderTree(branches)
+			}
+		}
+
 		if m.ready {
-			m.viewport.SetContent(m.content)
+			m.viewport.SetContent(content)
 		}
 	}
 
