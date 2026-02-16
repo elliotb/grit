@@ -323,12 +323,121 @@ func TestNavigation_EmptyTree(t *testing.T) {
 	}
 }
 
+func TestActionResult_Success_ReloadsTree(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+	m.statusBar.startSpinner("Working...")
+
+	updated, cmd := m.Update(actionResultMsg{action: "checkout", message: "Checked out feature-base"})
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("running should be false after actionResultMsg")
+	}
+	if m.statusBar.spinning {
+		t.Error("spinner should be stopped")
+	}
+	// Should return a loadLog command
+	if cmd == nil {
+		t.Error("expected reload cmd after successful action")
+	}
+}
+
+func TestActionResult_Error_ShowsError(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+
+	updated, _ := m.Update(actionResultMsg{action: "checkout", err: errors.New("branch not found")})
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("running should be false after error")
+	}
+	if !m.statusBar.isError {
+		t.Error("status bar should show error")
+	}
+	if !containsString(m.statusBar.message, "branch not found") {
+		t.Errorf("status bar message = %q, want to contain 'branch not found'", m.statusBar.message)
+	}
+}
+
+func TestActionResult_OpenPR_NoReload(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+
+	updated, _ := m.Update(actionResultMsg{action: "openpr", message: "Opened PR"})
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("running should be false")
+	}
+}
+
+func TestInputBlocked_WhenRunning(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.cursor = 0
+	m.running = true
+
+	// Navigation should be blocked
+	m = sendKey(m, 'j')
+	if m.cursor != 0 {
+		t.Errorf("cursor should not move while running, got %d", m.cursor)
+	}
+}
+
+func TestQuit_WorksWhileRunning(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+
+	_, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'q'}}))
+	if cmd == nil {
+		t.Fatal("quit should work while running")
+	}
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("expected QuitMsg, got %T", msg)
+	}
+}
+
+func TestRunAction_ProducesActionResultMsg(t *testing.T) {
+	cmd := runAction("test", "Done", func(ctx context.Context) error {
+		return nil
+	})
+	msg := cmd()
+	result, ok := msg.(actionResultMsg)
+	if !ok {
+		t.Fatalf("expected actionResultMsg, got %T", msg)
+	}
+	if result.action != "test" {
+		t.Errorf("action = %q, want %q", result.action, "test")
+	}
+	if result.err != nil {
+		t.Errorf("err = %v, want nil", result.err)
+	}
+	if result.message != "Done" {
+		t.Errorf("message = %q, want %q", result.message, "Done")
+	}
+}
+
+func TestRunAction_PropagatesError(t *testing.T) {
+	cmd := runAction("test", "Done", func(ctx context.Context) error {
+		return errors.New("fail")
+	})
+	msg := cmd()
+	result := msg.(actionResultMsg)
+	if result.err == nil {
+		t.Error("expected error, got nil")
+	}
+}
+
+// Keep this test but move it after the action tests
 func TestView_BeforeReady(t *testing.T) {
 	m := newTestModel("", nil)
 	if got := m.View(); got != "Loading..." {
 		t.Errorf("got %q, want %q", got, "Loading...")
 	}
 }
+
 
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)

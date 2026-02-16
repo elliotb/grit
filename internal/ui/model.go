@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -17,6 +18,13 @@ import (
 type logResultMsg struct {
 	output string
 	err    error
+}
+
+// actionResultMsg is sent when an async gt action completes.
+type actionResultMsg struct {
+	action  string
+	err     error
+	message string // success message to display
 }
 
 // debounceFireMsg is sent after a debounce delay to trigger a reload.
@@ -43,6 +51,7 @@ type Model struct {
 	gitDir         string
 	watcher        *fsnotify.Watcher
 	debounceSeq    int
+	running        bool
 }
 
 // New creates a new root model. If gitDir is non-empty, a file watcher is
@@ -115,6 +124,15 @@ func (m *Model) ensureCursorVisible() {
 	}
 }
 
+// runAction returns a tea.Cmd that runs fn asynchronously and produces an
+// actionResultMsg when it completes.
+func runAction(action, successMsg string, fn func(ctx context.Context) error) tea.Cmd {
+	return func() tea.Msg {
+		err := fn(context.Background())
+		return actionResultMsg{action: action, err: err, message: successMsg}
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -125,6 +143,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.watcher.Close()
 			}
 			return m, tea.Quit
+		}
+
+		// Block all other input while an action is running.
+		if m.running {
+			break
 		}
 
 		switch {
@@ -190,6 +213,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.ready {
 			m.viewport.SetContent(content)
+		}
+
+	case actionResultMsg:
+		m.running = false
+		m.statusBar.stopSpinner()
+		if msg.err != nil {
+			m.statusBar.setMessage("Error: "+msg.err.Error(), true)
+		} else {
+			m.statusBar.setMessage(msg.message, false)
+			// Reload tree after successful actions (except openpr which doesn't change git state).
+			if msg.action != "openpr" {
+				cmds = append(cmds, m.loadLog())
+			}
+		}
+
+	case spinner.TickMsg:
+		if m.running {
+			var cmd tea.Cmd
+			m.statusBar.spinner, cmd = m.statusBar.spinner.Update(msg)
+			cmds = append(cmds, cmd)
 		}
 
 	case gitChangeMsg:
