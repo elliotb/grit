@@ -195,6 +195,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 
+		// Help mode key handling.
+		if m.mode == modeHelp {
+			if key.Matches(msg, m.keys.Help) || msg.Type == tea.KeyEscape {
+				m.mode = modeTree
+				m.viewport.SetContent(renderTree(m.displayEntries, m.cursor))
+			}
+			break
+		}
+
 		// Diff mode key handling.
 		if m.mode == modeDiff {
 			switch {
@@ -342,6 +351,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmds = append(cmds, spinnerCmd, diffCmd)
 				}
 			}
+		case key.Matches(msg, m.keys.Help):
+			m.mode = modeHelp
+			m.viewport.SetContent(renderHelp())
 		}
 
 	case tea.WindowSizeMsg:
@@ -501,6 +513,15 @@ func (m Model) legendView() string {
 		{"f", "fetch"},
 		{"y", "sync"},
 		{"o", "open PR"},
+		{"?", "help"},
+		{"q", "quit"},
+	}
+	return renderLegend(pairs, m.width)
+}
+
+func (m Model) helpLegendView() string {
+	pairs := []struct{ key, desc string }{
+		{"?/esc", "close help"},
 		{"q", "quit"},
 	}
 	return renderLegend(pairs, m.width)
@@ -520,9 +541,12 @@ func (m Model) diffLegendView() string {
 // The legend may wrap to multiple lines on narrow terminals.
 func (m Model) chromeHeight() int {
 	var legend string
-	if m.mode == modeDiff {
+	switch m.mode {
+	case modeDiff:
 		legend = m.diffLegendView()
-	} else {
+	case modeHelp:
+		legend = m.helpLegendView()
+	default:
 		legend = m.legendView()
 	}
 	return lipgloss.Height(legend) + 1 // +1 for status bar
@@ -538,6 +562,15 @@ func (m Model) View() string {
 			lipgloss.Left,
 			m.diff.view(),
 			m.diffLegendView(),
+			m.statusBar.view(),
+		)
+	}
+
+	if m.mode == modeHelp {
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			m.viewport.View(),
+			m.helpLegendView(),
 			m.statusBar.view(),
 		)
 	}

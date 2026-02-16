@@ -1224,6 +1224,108 @@ func TestDiffMode_FullFlow(t *testing.T) {
 	}
 }
 
+// --- Help mode tests ---
+
+func TestHelpKey_OpensHelpMode(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+
+	m = sendKey(m, '?')
+
+	if m.mode != modeHelp {
+		t.Error("pressing ? should switch to help mode")
+	}
+	view := m.View()
+	if !containsString(view, "Keybindings") {
+		t.Error("help mode should show keybinding content")
+	}
+}
+
+func TestHelpKey_ClosesHelpMode(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m = sendKey(m, '?')
+	if m.mode != modeHelp {
+		t.Fatal("should be in help mode")
+	}
+
+	m = sendKey(m, '?')
+	if m.mode != modeTree {
+		t.Error("pressing ? again should return to tree mode")
+	}
+	view := m.View()
+	if !containsString(view, "feature-top") {
+		t.Error("tree should be restored")
+	}
+}
+
+func TestHelpMode_EscCloses(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m = sendKey(m, '?')
+
+	m = sendSpecialKey(m, tea.KeyEscape)
+	if m.mode != modeTree {
+		t.Error("esc should close help mode")
+	}
+}
+
+func TestHelpMode_QuitStillWorks(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m = sendKey(m, '?')
+
+	_, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'q'}}))
+	if cmd == nil {
+		t.Fatal("q should produce quit cmd in help mode")
+	}
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("expected QuitMsg, got %T", msg)
+	}
+}
+
+func TestHelpMode_TreeKeysBlocked(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m = sendKey(m, '?')
+
+	for _, k := range []rune{'s', 'S', 'r', 'f', 'y', 'o', 'd', 'm'} {
+		updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{k}}))
+		m = updated.(Model)
+		if m.running {
+			t.Errorf("key %c should not start action in help mode", k)
+		}
+		if m.mode != modeHelp {
+			t.Errorf("key %c should not exit help mode", k)
+		}
+	}
+}
+
+func TestHelpMode_NavigationBlocked(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	initial := m.cursor
+	m = sendKey(m, '?')
+
+	m = sendKey(m, 'j')
+	if m.cursor != initial {
+		t.Error("navigation should be blocked in help mode")
+	}
+}
+
+func TestHelpMode_ShowsHelpLegend(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m = sendKey(m, '?')
+
+	view := m.View()
+	if !containsString(view, "close help") {
+		t.Error("help mode should show 'close help' in legend")
+	}
+}
+
+func TestTreeLegend_ContainsHelp(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	view := m.View()
+	if !containsString(view, "help") {
+		t.Error("tree legend should contain 'help'")
+	}
+}
+
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }

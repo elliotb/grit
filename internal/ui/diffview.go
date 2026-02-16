@@ -14,6 +14,7 @@ type viewMode int
 const (
 	modeTree viewMode = iota
 	modeDiff
+	modeHelp
 )
 
 // diffPanel tracks which panel has focus in the diff view.

@@ -17,6 +17,7 @@ type keyMap struct {
 	Diff            key.Binding
 	DiffClose       key.Binding
 	Tab             key.Binding
+	Help            key.Binding
 }
 
 func defaultKeyMap() keyMap {
@@ -76,6 +77,10 @@ func defaultKeyMap() keyMap {
 		Tab: key.NewBinding(
 			key.WithKeys("tab"),
 			key.WithHelp("tab", "switch panel"),
+		),
+		Help: key.NewBinding(
+			key.WithKeys("?"),
+			key.WithHelp("?", "help"),
 		),
 	}
 }
