@@ -210,6 +210,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return client.StackRestack(ctx)
 			})
 			cmds = append(cmds, spinnerCmd, actionCmd)
+		case key.Matches(msg, m.keys.Fetch):
+			m.running = true
+			client := m.gtClient
+			spinnerCmd := m.statusBar.startSpinner("Fetching...")
+			actionCmd := runAction("fetch", "Fetched", func(ctx context.Context) error {
+				return client.RepoSync(ctx)
+			})
+			cmds = append(cmds, spinnerCmd, actionCmd)
 		case key.Matches(msg, m.keys.Sync):
 			m.running = true
 			client := m.gtClient
@@ -338,6 +346,7 @@ func (m Model) legendView() string {
 		{"s", "submit"},
 		{"S", "downstack"},
 		{"r", "restack"},
+		{"f", "fetch"},
 		{"y", "sync"},
 		{"o", "open PR"},
 		{"q", "quit"},

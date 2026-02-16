@@ -11,6 +11,7 @@ type keyMap struct {
 	StackSubmit     key.Binding
 	DownstackSubmit key.Binding
 	Restack         key.Binding
+	Fetch           key.Binding
 	Sync            key.Binding
 	OpenPR          key.Binding
 }
@@ -48,6 +49,10 @@ func defaultKeyMap() keyMap {
 		Restack: key.NewBinding(
 			key.WithKeys("r"),
 			key.WithHelp("r", "restack"),
+		),
+		Fetch: key.NewBinding(
+			key.WithKeys("f"),
+			key.WithHelp("f", "fetch"),
 		),
 		Sync: key.NewBinding(
 			key.WithKeys("y"),

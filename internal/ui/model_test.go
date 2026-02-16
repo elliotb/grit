@@ -506,6 +506,7 @@ func TestActionKeys(t *testing.T) {
 		{"submit stack", 's', true, "Submitting stack..."},
 		{"submit downstack", 'S', true, "Submitting downstack..."},
 		{"restack", 'r', true, "Restacking..."},
+		{"fetch", 'f', true, "Fetching..."},
 		{"sync", 'y', true, "Syncing..."},
 		{"open PR", 'o', true, "Opening PR..."},
 	}
@@ -594,7 +595,7 @@ func TestView_ContainsLegend(t *testing.T) {
 	view := m.View()
 
 	// Legend should contain key descriptions
-	for _, key := range []string{"checkout", "trunk", "submit", "restack", "sync", "quit"} {
+	for _, key := range []string{"checkout", "trunk", "submit", "restack", "fetch", "sync", "quit"} {
 		if !containsString(view, key) {
 			t.Errorf("view should contain legend text %q", key)
 		}
