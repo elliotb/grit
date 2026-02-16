@@ -2,7 +2,9 @@ package gt
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // CommandExecutor abstracts the execution of shell commands.
@@ -17,6 +19,11 @@ type ExecCommandExecutor struct{}
 func (e *ExecCommandExecutor) Execute(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+			return string(out), fmt.Errorf("%s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+	}
 	return string(out), err
 }
 
@@ -40,9 +47,9 @@ func (c *Client) LogShort(ctx context.Context) (string, error) {
 	return c.executor.Execute(ctx, "gt", "log", "short", "--no-interactive")
 }
 
-// Checkout runs `gt branch checkout <name> --no-interactive`.
+// Checkout runs `gt checkout <name> --no-interactive`.
 func (c *Client) Checkout(ctx context.Context, branchName string) error {
-	_, err := c.executor.Execute(ctx, "gt", "branch", "checkout", branchName, "--no-interactive")
+	_, err := c.executor.Execute(ctx, "gt", "checkout", branchName, "--no-interactive")
 	return err
 }
 

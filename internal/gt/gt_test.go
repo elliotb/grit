@@ -3,6 +3,7 @@ package gt
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -78,7 +79,7 @@ func TestCheckout_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertArgs(t, mock, []string{"branch", "checkout", "feature-a", "--no-interactive"})
+	assertArgs(t, mock, []string{"checkout", "feature-a", "--no-interactive"})
 }
 
 func TestCheckout_Error(t *testing.T) {
@@ -212,5 +213,17 @@ func TestExecCommandExecutor_Failure(t *testing.T) {
 	_, err := exec.Execute(context.Background(), "false")
 	if err == nil {
 		t.Fatal("expected error from 'false' command, got nil")
+	}
+}
+
+func TestExecCommandExecutor_StderrInError(t *testing.T) {
+	exec := &ExecCommandExecutor{}
+	// bash -c 'echo error message >&2; exit 1' writes to stderr and exits with 1
+	_, err := exec.Execute(context.Background(), "bash", "-c", "echo error message >&2; exit 1")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "error message") {
+		t.Errorf("error should contain stderr output, got: %q", err.Error())
 	}
 }
