@@ -44,10 +44,6 @@ No Makefile, linter, or CI pipeline is configured yet. Requires Go 1.25.0+.
 - **Cursor preservation**: After tree reloads, `preserveCursor` tries to keep the cursor on the same branch by name, falling back to the current branch, then index 0.
 - **Action locking**: `m.running` flag blocks all input during async `gt` commands, preventing concurrent mutations.
 
-### Development roadmap
-
-See `PRODUCT.md` for the full specification and 5-phase build plan. Phases 1–5 are substantially complete: skeleton, parsed tree with auto-refresh, navigation + actions, diff view, and polish (PR status, help screen, error handling).
-
 ## Development Workflow
 
 - **Write comprehensive tests**: All new code should have thorough test coverage. Run `go test ./...` as part of verification before considering a task done.
