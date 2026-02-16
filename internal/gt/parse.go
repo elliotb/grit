@@ -7,16 +7,18 @@ import (
 
 // Branch represents a single branch in the Graphite stack tree.
 type Branch struct {
-	Name      string
-	IsCurrent bool
-	Children  []*Branch
+	Name       string
+	IsCurrent  bool
+	Annotation string // e.g. "needs restack", "merging", "" if none
+	Children   []*Branch
 }
 
 // parsedLine holds the extracted data from a single line of gt log short output.
 type parsedLine struct {
-	name      string
-	depth     int
-	isCurrent bool
+	name       string
+	depth      int
+	isCurrent  bool
+	annotation string
 }
 
 // ParseLogShort parses the output of `gt log short` into a tree of branches.
@@ -43,7 +45,7 @@ func ParseLogShort(output string) ([]*Branch, error) {
 	}
 
 	// Build tree. The first entry (after reversal) is the trunk/root.
-	root := &Branch{Name: parsed[0].name, IsCurrent: parsed[0].isCurrent}
+	root := &Branch{Name: parsed[0].name, IsCurrent: parsed[0].isCurrent, Annotation: parsed[0].annotation}
 	roots := []*Branch{root}
 
 	// parentAtDepth tracks the "tip" branch at each depth level.
@@ -54,7 +56,7 @@ func ParseLogShort(output string) ([]*Branch, error) {
 
 	for i := 1; i < len(parsed); i++ {
 		p := parsed[i]
-		b := &Branch{Name: p.name, IsCurrent: p.isCurrent}
+		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation}
 
 		switch {
 		case p.depth == 0:
@@ -146,26 +148,29 @@ func parseLine(line string) (parsedLine, bool) {
 	rest := line[byteOffset:]
 	name := stripConnectors(rest)
 	name = strings.TrimSpace(name)
-	name = stripAnnotation(name)
+	name, annotation := extractAnnotation(name)
 
 	if name == "" {
 		return parsedLine{}, false
 	}
 
 	return parsedLine{
-		name:      name,
-		depth:     depth,
-		isCurrent: isCurrent,
+		name:       name,
+		depth:      depth,
+		isCurrent:  isCurrent,
+		annotation: annotation,
 	}, true
 }
 
-// stripAnnotation removes a trailing parenthesized annotation from a branch
-// name, e.g. "my-branch (merging)" → "my-branch".
-func stripAnnotation(name string) string {
+// extractAnnotation splits a trailing parenthesized annotation from a branch
+// name, e.g. "my-branch (merging)" → ("my-branch", "merging").
+// Returns an empty annotation if none is present.
+func extractAnnotation(name string) (string, string) {
 	if idx := strings.LastIndex(name, " ("); idx != -1 && strings.HasSuffix(name, ")") {
-		return name[:idx]
+		annotation := name[idx+2 : len(name)-1]
+		return name[:idx], annotation
 	}
-	return name
+	return name, ""
 }
 
 // FindParent searches the branch tree for the parent of the named branch.

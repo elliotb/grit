@@ -13,6 +13,7 @@ var (
 	branchStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	connectorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	selectedBranchStyle = lipgloss.NewStyle().Bold(true).Reverse(true)
+	annotationStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 )
 
 // displayEntry represents a branch with its visual depth for flat rendering.
@@ -73,12 +74,20 @@ func collectStack(children []*gt.Branch, depth int, rootLevel bool, entries *[]d
 	}
 }
 
+// annotationLabel returns a styled annotation suffix, or empty string if none.
+func annotationLabel(b *gt.Branch) string {
+	if b.Annotation == "" {
+		return ""
+	}
+	return " " + annotationStyle.Render("("+b.Annotation+")")
+}
+
 // branchLabel returns a styled label for a branch.
 func branchLabel(b *gt.Branch) string {
 	if b.IsCurrent {
-		return currentBranchStyle.Render("◉ " + b.Name)
+		return currentBranchStyle.Render("◉ "+b.Name) + annotationLabel(b)
 	}
-	return branchStyle.Render("◯ " + b.Name)
+	return branchStyle.Render("◯ "+b.Name) + annotationLabel(b)
 }
 
 // selectedBranchLabel returns a highlighted label for the cursor-selected branch.
@@ -87,5 +96,9 @@ func selectedBranchLabel(b *gt.Branch) string {
 	if b.IsCurrent {
 		marker = "◉ "
 	}
-	return selectedBranchStyle.Render(marker + b.Name)
+	label := marker + b.Name
+	if b.Annotation != "" {
+		label += " (" + b.Annotation + ")"
+	}
+	return selectedBranchStyle.Render(label)
 }

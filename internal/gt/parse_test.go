@@ -383,23 +383,27 @@ func TestParseLine_DepthCalculation(t *testing.T) {
 	}
 }
 
-func TestStripAnnotation(t *testing.T) {
+func TestExtractAnnotation(t *testing.T) {
 	tests := []struct {
-		input string
-		want  string
+		input          string
+		wantName       string
+		wantAnnotation string
 	}{
-		{"my-branch", "my-branch"},
-		{"my-branch (merging)", "my-branch"},
-		{"my-branch (needs restack)", "my-branch"},
-		{"my-branch (rebasing)", "my-branch"},
-		{"branch-with-(parens)-in-name", "branch-with-(parens)-in-name"},
-		{"", ""},
+		{"my-branch", "my-branch", ""},
+		{"my-branch (merging)", "my-branch", "merging"},
+		{"my-branch (needs restack)", "my-branch", "needs restack"},
+		{"my-branch (rebasing)", "my-branch", "rebasing"},
+		{"branch-with-(parens)-in-name", "branch-with-(parens)-in-name", ""},
+		{"", "", ""},
 	}
 
 	for _, tt := range tests {
-		got := stripAnnotation(tt.input)
-		if got != tt.want {
-			t.Errorf("stripAnnotation(%q) = %q, want %q", tt.input, got, tt.want)
+		gotName, gotAnnotation := extractAnnotation(tt.input)
+		if gotName != tt.wantName {
+			t.Errorf("extractAnnotation(%q) name = %q, want %q", tt.input, gotName, tt.wantName)
+		}
+		if gotAnnotation != tt.wantAnnotation {
+			t.Errorf("extractAnnotation(%q) annotation = %q, want %q", tt.input, gotAnnotation, tt.wantAnnotation)
 		}
 	}
 }
@@ -412,6 +416,9 @@ func TestParseLine_WithAnnotation(t *testing.T) {
 	}
 	if pl.name != "my-branch" {
 		t.Errorf("name = %q, want %q", pl.name, "my-branch")
+	}
+	if pl.annotation != "merging" {
+		t.Errorf("annotation = %q, want %q", pl.annotation, "merging")
 	}
 }
 
@@ -429,9 +436,15 @@ func TestParseLogShort_BranchWithAnnotation(t *testing.T) {
 	if featureBase.Name != "feature-base" {
 		t.Errorf("expected feature-base, got %q", featureBase.Name)
 	}
+	if featureBase.Annotation != "" {
+		t.Errorf("feature-base annotation = %q, want empty", featureBase.Annotation)
+	}
 	featureTop := featureBase.Children[0]
 	if featureTop.Name != "feature-top" {
 		t.Errorf("expected feature-top (annotation stripped), got %q", featureTop.Name)
+	}
+	if featureTop.Annotation != "needs restack" {
+		t.Errorf("feature-top annotation = %q, want %q", featureTop.Annotation, "needs restack")
 	}
 }
 

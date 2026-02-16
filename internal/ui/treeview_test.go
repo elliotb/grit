@@ -232,6 +232,46 @@ func TestRenderTree_CursorOutOfRange(t *testing.T) {
 	}
 }
 
+func TestRenderTree_WithAnnotation(t *testing.T) {
+	entries := []displayEntry{
+		{branch: &gt.Branch{Name: "main"}, depth: 0},
+		{branch: &gt.Branch{Name: "feature-a", Annotation: "needs restack"}, depth: 1},
+	}
+
+	result := ansi.Strip(renderTree(entries, 0))
+	if !strings.Contains(result, "(needs restack)") {
+		t.Errorf("output should contain annotation, got:\n%s", result)
+	}
+	if !strings.Contains(result, "feature-a") {
+		t.Errorf("output should contain branch name, got:\n%s", result)
+	}
+}
+
+func TestRenderTree_AnnotationInSelectedBranch(t *testing.T) {
+	entries := []displayEntry{
+		{branch: &gt.Branch{Name: "main"}, depth: 0},
+		{branch: &gt.Branch{Name: "feature-a", Annotation: "merging"}, depth: 1},
+	}
+
+	// Cursor on annotated branch
+	result := ansi.Strip(renderTree(entries, 1))
+	if !strings.Contains(result, "(merging)") {
+		t.Errorf("selected branch should include annotation, got:\n%s", result)
+	}
+}
+
+func TestRenderTree_NoAnnotation(t *testing.T) {
+	entries := []displayEntry{
+		{branch: &gt.Branch{Name: "main"}, depth: 0},
+		{branch: &gt.Branch{Name: "feature-a"}, depth: 1},
+	}
+
+	result := ansi.Strip(renderTree(entries, 0))
+	if strings.Contains(result, "(") {
+		t.Errorf("output should not contain parentheses when no annotation, got:\n%s", result)
+	}
+}
+
 func TestFlattenForDisplay_Entries(t *testing.T) {
 	branches := []*gt.Branch{
 		{
