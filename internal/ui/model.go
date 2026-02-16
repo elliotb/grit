@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fsnotify/fsnotify"
 
 	"github.com/ejb/grit/internal/gt"
 )
@@ -30,19 +31,32 @@ type Model struct {
 	err       error
 	width     int
 	height    int
+	gitDir    string
+	watcher   *fsnotify.Watcher
 }
 
-// New creates a new root model.
-func New(gtClient *gt.Client) Model {
-	return Model{
+// New creates a new root model. If gitDir is non-empty, a file watcher is
+// created for auto-refresh on .git changes.
+func New(gtClient *gt.Client, gitDir string) Model {
+	m := Model{
 		gtClient:  gtClient,
+		gitDir:    gitDir,
 		keys:      defaultKeyMap(),
 		statusBar: newStatusBar(),
 	}
+
+	if gitDir != "" {
+		watcher, err := createWatcher(gitDir)
+		if err == nil {
+			m.watcher = watcher
+		}
+	}
+
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return m.loadLog()
+	return tea.Batch(m.loadLog(), waitForChange(m.watcher))
 }
 
 func (m Model) loadLog() tea.Cmd {
@@ -59,6 +73,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keys.Quit) {
+			if m.watcher != nil {
+				m.watcher.Close()
+			}
 			return m, tea.Quit
 		}
 
@@ -104,6 +121,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.ready {
 			m.viewport.SetContent(content)
 		}
+
+	case gitChangeMsg:
+		cmds = append(cmds, m.loadLog(), waitForChange(m.watcher))
+
+	case watcherErrMsg:
+		m.statusBar.setMessage("Watch error: "+msg.err.Error(), true)
+		cmds = append(cmds, waitForChange(m.watcher))
 	}
 
 	var vpCmd tea.Cmd

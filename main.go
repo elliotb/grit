@@ -12,7 +12,7 @@ import (
 
 func main() {
 	gtClient := gt.NewDefault()
-	model := ui.New(gtClient)
+	model := ui.New(gtClient, ".git")
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

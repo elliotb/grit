@@ -21,7 +21,7 @@ func (m *mockExecutor) Execute(ctx context.Context, name string, args ...string)
 
 func newTestModel(output string, err error) Model {
 	client := gt.New(&mockExecutor{output: output, err: err})
-	return New(client)
+	return New(client, "")
 }
 
 func sendWindowSize(m Model, width, height int) Model {
