@@ -104,7 +104,9 @@ func (m Model) Init() tea.Cmd {
 func (m Model) loadLog() tea.Cmd {
 	client := m.gtClient
 	return func() tea.Msg {
-		output, err := client.LogShort(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		output, err := client.LogShort(ctx)
 		return logResultMsg{output: output, err: err}
 	}
 }
@@ -151,7 +153,9 @@ func (m *Model) ensureCursorVisible() {
 // actionResultMsg when it completes.
 func runAction(action, successMsg string, fn func(ctx context.Context) error) tea.Cmd {
 	return func() tea.Msg {
-		err := fn(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		err := fn(ctx)
 		return actionResultMsg{action: action, err: err, message: successMsg}
 	}
 }
@@ -160,7 +164,8 @@ func runAction(action, successMsg string, fn func(ctx context.Context) error) te
 func (m Model) loadDiffData(parentBranch, branchName string) tea.Cmd {
 	client := m.gtClient
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 		statOutput, err := client.DiffStat(ctx, parentBranch, branchName)
 		if err != nil {
 			return diffDataMsg{branchName: branchName, err: err}
@@ -174,7 +179,8 @@ func (m Model) loadDiffData(parentBranch, branchName string) tea.Cmd {
 func (m Model) loadDiffFile(parent, branch, file string) tea.Cmd {
 	client := m.gtClient
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 		content, err := client.DiffFile(ctx, parent, branch, file)
 		if err != nil {
 			return diffFileContentMsg{file: file, err: err}
@@ -206,10 +212,11 @@ func (m Model) loadPRInfo() tea.Cmd {
 
 	client := m.gtClient
 	return func() tea.Msg {
-		ctx := context.Background()
 		infos := make(map[string]gt.PRInfo)
 		for _, name := range names {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			output, err := client.BranchPRInfo(ctx, name)
+			cancel()
 			if err != nil {
 				infos[name] = gt.PRInfo{}
 				continue
