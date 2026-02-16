@@ -731,6 +731,456 @@ func TestActionKeys_NoOpOnEmptyTree(t *testing.T) {
 	}
 }
 
+// --- Diff view integration tests ---
+
+// diffMock creates a mockExecutor that handles both gt and git commands for diff tests.
+func diffMock(logOutput string) *mockExecutor {
+	return &mockExecutor{fn: func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == "gt" && len(args) > 0 {
+			switch args[0] {
+			case "log":
+				return logOutput, nil
+			case "parent":
+				return "main\n", nil
+			}
+		}
+		if name == "git" && len(args) > 0 && args[0] == "diff" {
+			for _, a := range args {
+				if a == "--stat" {
+					return " model.go | 5 +++--\n keys.go  | 3 +++\n 2 files changed, 6 insertions(+), 2 deletions(-)\n", nil
+				}
+			}
+			// File diff
+			return "@@ -1,3 +1,5 @@\n+new line 1\n+new line 2\n old line\n", nil
+		}
+		return "", nil
+	}}
+}
+
+func loadedDiffModel(logOutput string) Model {
+	client := gt.New(diffMock(logOutput))
+	m := New(client, "")
+	m = sendWindowSize(m, 100, 30)
+	updated, _ := m.Update(logResultMsg{output: logOutput})
+	return updated.(Model)
+}
+
+func TestDiffKey_OpensLoading(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+
+	updated, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'d'}}))
+	m = updated.(Model)
+
+	if !m.running {
+		t.Error("pressing d should set running=true")
+	}
+	if !m.statusBar.spinning {
+		t.Error("spinner should be active")
+	}
+	if !containsString(m.statusBar.spinnerLabel, "Loading diff") {
+		t.Errorf("spinnerLabel = %q, want to contain 'Loading diff'", m.statusBar.spinnerLabel)
+	}
+	if cmd == nil {
+		t.Fatal("expected commands from d key")
+	}
+}
+
+func TestDiffKey_EmptyTree(t *testing.T) {
+	m := loadedDiffModel("some random output without markers")
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'d'}}))
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("d on empty tree should not start action")
+	}
+}
+
+func TestDiffKey_BlockedWhileRunning(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'d'}}))
+	m = updated.(Model)
+
+	// Should still be in tree mode (d was blocked).
+	if m.mode != modeTree {
+		t.Error("d should be blocked while running")
+	}
+}
+
+func TestDiffDataMsg_Success_EntersDiffMode(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+	m.statusBar.startSpinner("Loading...")
+
+	files := []diffFileEntry{
+		{path: "model.go", summary: "5 +++--"},
+		{path: "keys.go", summary: "3 +++"},
+	}
+	updated, cmd := m.Update(diffDataMsg{
+		branchName:   "feature-top",
+		parentBranch: "main",
+		files:        files,
+	})
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("running should be false after diffDataMsg")
+	}
+	if m.mode != modeDiff {
+		t.Error("should be in diff mode")
+	}
+	if m.diff.branchName != "feature-top" {
+		t.Errorf("branchName = %q, want %q", m.diff.branchName, "feature-top")
+	}
+	if m.diff.parentBranch != "main" {
+		t.Errorf("parentBranch = %q, want %q", m.diff.parentBranch, "main")
+	}
+	if len(m.diff.files) != 2 {
+		t.Errorf("got %d files, want 2", len(m.diff.files))
+	}
+	// Should issue loadDiffFile for first file.
+	if cmd == nil {
+		t.Error("expected command to load first file diff")
+	}
+}
+
+func TestDiffDataMsg_NoFiles(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+
+	updated, _ := m.Update(diffDataMsg{
+		branchName:   "feature-top",
+		parentBranch: "main",
+		files:        nil,
+	})
+	m = updated.(Model)
+
+	if m.mode != modeDiff {
+		t.Error("should enter diff mode even with no files")
+	}
+	if len(m.diff.files) != 0 {
+		t.Errorf("got %d files, want 0", len(m.diff.files))
+	}
+}
+
+func TestDiffDataMsg_Error_ShowsError(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+
+	updated, _ := m.Update(diffDataMsg{
+		branchName: "main",
+		err:        errors.New("no parent branch"),
+	})
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("running should be false")
+	}
+	if m.mode != modeTree {
+		t.Error("should stay in tree mode on error")
+	}
+	if !m.statusBar.isError {
+		t.Error("status bar should show error")
+	}
+	if !containsString(m.statusBar.message, "no parent branch") {
+		t.Errorf("message = %q, want to contain 'no parent branch'", m.statusBar.message)
+	}
+}
+
+func TestDiffFileContentMsg_UpdatesViewport(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	// Enter diff mode manually.
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+	m.diff.branchName = "feature-top"
+	m.diff.parentBranch = "main"
+	m.diff.setFiles([]diffFileEntry{{path: "model.go", summary: "5 +++--"}})
+
+	updated, _ := m.Update(diffFileContentMsg{
+		file:    "model.go",
+		content: "+added line\n-removed line",
+	})
+	m = updated.(Model)
+
+	view := m.diff.diffViewport.View()
+	if !containsString(view, "+added line") {
+		t.Error("diff viewport should contain the file content")
+	}
+}
+
+func TestDiffFileContentMsg_Error(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+
+	updated, _ := m.Update(diffFileContentMsg{
+		file: "model.go",
+		err:  errors.New("diff failed"),
+	})
+	m = updated.(Model)
+
+	if !m.statusBar.isError {
+		t.Error("status bar should show error")
+	}
+	if !containsString(m.statusBar.message, "diff failed") {
+		t.Errorf("message = %q, want to contain 'diff failed'", m.statusBar.message)
+	}
+}
+
+func TestDiffClose_Esc(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+	m.diff.branchName = "feature-top"
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyEscape}))
+	m = updated.(Model)
+
+	if m.mode != modeTree {
+		t.Error("Esc should return to tree mode")
+	}
+}
+
+func TestDiffClose_D(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+	m.diff.branchName = "feature-top"
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'d'}}))
+	m = updated.(Model)
+
+	if m.mode != modeTree {
+		t.Error("d should return to tree mode when in diff mode")
+	}
+}
+
+func TestDiffClose_RestoresTree(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyEscape}))
+	m = updated.(Model)
+
+	view := m.View()
+	if !containsString(view, "feature-top") {
+		t.Error("tree should be restored after closing diff")
+	}
+	if !containsString(view, "main") {
+		t.Error("tree should contain 'main' after closing diff")
+	}
+}
+
+func TestDiffMode_TreeKeysBlocked(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+	m.diff.setFiles([]diffFileEntry{{path: "a.go", summary: "1 +"}})
+
+	// Tree action keys should not trigger actions in diff mode.
+	for _, k := range []rune{'s', 'S', 'r', 'f', 'y', 'o', 'm'} {
+		updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{k}}))
+		m = updated.(Model)
+		if m.running {
+			t.Errorf("key %c should not start action in diff mode", k)
+		}
+	}
+
+	// Enter should also not trigger checkout.
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyEnter}))
+	m = updated.(Model)
+	if m.running {
+		t.Error("Enter should not trigger checkout in diff mode")
+	}
+}
+
+func TestDiffMode_QuitStillWorks(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+
+	_, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'q'}}))
+	if cmd == nil {
+		t.Fatal("q should produce quit cmd in diff mode")
+	}
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("expected QuitMsg, got %T", msg)
+	}
+}
+
+func TestDiffMode_Tab_TogglesFocus(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+	m.diff.setFiles([]diffFileEntry{{path: "a.go"}})
+
+	if m.diff.focusedPanel != panelFileList {
+		t.Error("initial focus should be file list")
+	}
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyTab}))
+	m = updated.(Model)
+	if m.diff.focusedPanel != panelDiff {
+		t.Error("tab should switch to diff panel")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyTab}))
+	m = updated.(Model)
+	if m.diff.focusedPanel != panelFileList {
+		t.Error("tab should switch back to file list")
+	}
+}
+
+func TestDiffMode_Navigation_FileList(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+	m.diff.branchName = "feature-top"
+	m.diff.parentBranch = "main"
+	m.diff.setFiles([]diffFileEntry{
+		{path: "a.go", summary: "1 +"},
+		{path: "b.go", summary: "2 ++"},
+		{path: "c.go", summary: "3 +++"},
+	})
+	m.diff.focusedPanel = panelFileList
+
+	if m.diff.fileCursor != 0 {
+		t.Errorf("initial cursor = %d, want 0", m.diff.fileCursor)
+	}
+
+	// Move down.
+	updated, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'j'}}))
+	m = updated.(Model)
+	if m.diff.fileCursor != 1 {
+		t.Errorf("after down: cursor = %d, want 1", m.diff.fileCursor)
+	}
+	if cmd == nil {
+		t.Error("expected loadDiffFile command after file cursor change")
+	}
+
+	// Move down again.
+	updated, _ = m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'j'}}))
+	m = updated.(Model)
+	if m.diff.fileCursor != 2 {
+		t.Errorf("after second down: cursor = %d, want 2", m.diff.fileCursor)
+	}
+
+	// Move down at end - should stay.
+	updated, _ = m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'j'}}))
+	m = updated.(Model)
+	if m.diff.fileCursor != 2 {
+		t.Errorf("at end: cursor = %d, want 2", m.diff.fileCursor)
+	}
+
+	// Move up.
+	updated, cmd = m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'k'}}))
+	m = updated.(Model)
+	if m.diff.fileCursor != 1 {
+		t.Errorf("after up: cursor = %d, want 1", m.diff.fileCursor)
+	}
+	if cmd == nil {
+		t.Error("expected loadDiffFile command after file cursor change")
+	}
+}
+
+func TestDiffMode_Navigation_FileList_UpAtZero(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+	m.diff.setFiles([]diffFileEntry{{path: "a.go"}})
+	m.diff.focusedPanel = panelFileList
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'k'}}))
+	m = updated.(Model)
+	if m.diff.fileCursor != 0 {
+		t.Errorf("cursor should stay at 0, got %d", m.diff.fileCursor)
+	}
+}
+
+func TestDiffMode_View_ShowsDiffLegend(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.mode = modeDiff
+	m.diff = newDiffView(100, 28)
+	m.diff.branchName = "feature-top"
+	m.diff.parentBranch = "main"
+
+	view := m.View()
+	if !containsString(view, "switch panel") {
+		t.Error("diff mode should show 'switch panel' in legend")
+	}
+	if !containsString(view, "close") {
+		t.Error("diff mode should show 'close' in legend")
+	}
+}
+
+func TestDiffMode_View_ShowsTreeLegendWhenClosed(t *testing.T) {
+	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	view := m.View()
+	if !containsString(view, "diff") {
+		t.Error("tree mode legend should contain 'diff'")
+	}
+	if !containsString(view, "checkout") {
+		t.Error("tree mode legend should contain 'checkout'")
+	}
+}
+
+func TestDiffMode_FullFlow(t *testing.T) {
+	// End-to-end: press d, receive diff data, receive file content, view, close.
+	logOutput := "│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main"
+	m := loadedDiffModel(logOutput)
+
+	// 1. Press d to open diff.
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'d'}}))
+	m = updated.(Model)
+	if !m.running {
+		t.Fatal("should be running after d")
+	}
+
+	// 2. Receive diff data.
+	updated, _ = m.Update(diffDataMsg{
+		branchName:   "feature-top",
+		parentBranch: "main",
+		files: []diffFileEntry{
+			{path: "model.go", summary: "5 +++--"},
+		},
+	})
+	m = updated.(Model)
+	if m.mode != modeDiff {
+		t.Fatal("should be in diff mode")
+	}
+
+	// 3. Receive file content.
+	updated, _ = m.Update(diffFileContentMsg{
+		file:    "model.go",
+		content: "+added line\n old line\n-removed line",
+	})
+	m = updated.(Model)
+
+	// 4. View should show diff content.
+	view := m.View()
+	if !containsString(view, "model.go") {
+		t.Error("view should show file name")
+	}
+	if !containsString(view, "feature-top") {
+		t.Error("view should show branch name")
+	}
+
+	// 5. Close with Esc.
+	updated, _ = m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyEscape}))
+	m = updated.(Model)
+	if m.mode != modeTree {
+		t.Error("should return to tree mode")
+	}
+	view = m.View()
+	if !containsString(view, "feature-top") {
+		t.Error("tree should be restored")
+	}
+}
+
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }
