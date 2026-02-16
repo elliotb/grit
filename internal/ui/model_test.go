@@ -465,6 +465,37 @@ func TestCheckout_EnterOnEmptyTree(t *testing.T) {
 	}
 }
 
+func TestTrunkKey_CheckoutsTrunk(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+
+	updated, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'m'}}))
+	m = updated.(Model)
+
+	if !m.running {
+		t.Error("pressing m should set running=true")
+	}
+	if !m.statusBar.spinning {
+		t.Error("spinner should be active")
+	}
+	if !containsString(m.statusBar.spinnerLabel, "main") {
+		t.Errorf("spinner label = %q, want to contain 'main'", m.statusBar.spinnerLabel)
+	}
+	if cmd == nil {
+		t.Fatal("expected commands from m key")
+	}
+}
+
+func TestTrunkKey_EmptyTree(t *testing.T) {
+	m := loadedModel("some random output without markers")
+
+	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'m'}}))
+	m = updated.(Model)
+
+	if m.running {
+		t.Error("m on empty tree should not start action")
+	}
+}
+
 func TestActionKeys(t *testing.T) {
 	tests := []struct {
 		name     string

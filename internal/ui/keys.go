@@ -7,6 +7,7 @@ type keyMap struct {
 	Up              key.Binding
 	Down            key.Binding
 	Checkout        key.Binding
+	Trunk           key.Binding
 	StackSubmit     key.Binding
 	DownstackSubmit key.Binding
 	Restack         key.Binding
@@ -31,6 +32,10 @@ func defaultKeyMap() keyMap {
 		Checkout: key.NewBinding(
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "checkout"),
+		),
+		Trunk: key.NewBinding(
+			key.WithKeys("m"),
+			key.WithHelp("m", "trunk"),
 		),
 		StackSubmit: key.NewBinding(
 			key.WithKeys("s"),

@@ -174,6 +174,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				})
 				cmds = append(cmds, spinnerCmd, actionCmd)
 			}
+		case key.Matches(msg, m.keys.Trunk):
+			if len(m.branches) > 0 {
+				m.running = true
+				name := m.branches[0].Name
+				client := m.gtClient
+				spinnerCmd := m.statusBar.startSpinner("Checking out " + name + "...")
+				actionCmd := runAction("checkout", "Checked out "+name, func(ctx context.Context) error {
+					return client.Checkout(ctx, name)
+				})
+				cmds = append(cmds, spinnerCmd, actionCmd)
+			}
 		case key.Matches(msg, m.keys.StackSubmit):
 			m.running = true
 			client := m.gtClient
