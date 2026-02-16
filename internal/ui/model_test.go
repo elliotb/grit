@@ -518,6 +518,39 @@ func TestActionKeys_BlockedWhileRunning(t *testing.T) {
 	}
 }
 
+func TestInitialCursor_OnCurrentBranch(t *testing.T) {
+	// feature-top is IsCurrent (◉), cursor should land there
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+
+	// After parse: main(0), feature-base(1), feature-top(2)
+	// feature-top has IsCurrent=true
+	selected := m.selectedBranch()
+	if selected == nil {
+		t.Fatal("expected a selected branch")
+	}
+	if selected.Name != "feature-top" {
+		t.Errorf("initial cursor on %q, want %q", selected.Name, "feature-top")
+	}
+}
+
+func TestActionResult_SuccessStyle(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	m.running = true
+
+	updated, _ := m.Update(actionResultMsg{action: "checkout", message: "Checked out feature-base"})
+	m = updated.(Model)
+
+	if !m.statusBar.isSuccess {
+		t.Error("status bar should show success style")
+	}
+	if m.statusBar.isError {
+		t.Error("status bar should not show error style")
+	}
+	if m.statusBar.message != "Checked out feature-base" {
+		t.Errorf("message = %q, want %q", m.statusBar.message, "Checked out feature-base")
+	}
+}
+
 func TestView_BeforeReady(t *testing.T) {
 	m := newTestModel("", nil)
 	if got := m.View(); got != "Loading..." {

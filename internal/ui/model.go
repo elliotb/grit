@@ -272,7 +272,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.statusBar.setMessage("Error: "+msg.err.Error(), true)
 		} else {
-			m.statusBar.setMessage(msg.message, false)
+			m.statusBar.setSuccessMessage(msg.message)
 			// Reload tree after successful actions (except openpr which doesn't change git state).
 			if msg.action != "openpr" {
 				cmds = append(cmds, m.loadLog())

@@ -13,6 +13,7 @@ type statusBar struct {
 	width        int
 	message      string
 	isError      bool
+	isSuccess    bool
 	lastRefresh  time.Time
 	spinner      spinner.Model
 	spinning     bool
@@ -33,6 +34,13 @@ func (s *statusBar) setSize(width int) {
 func (s *statusBar) setMessage(msg string, isError bool) {
 	s.message = msg
 	s.isError = isError
+	s.isSuccess = false
+}
+
+func (s *statusBar) setSuccessMessage(msg string) {
+	s.message = msg
+	s.isError = false
+	s.isSuccess = true
 }
 
 func (s *statusBar) setRefreshTime(t time.Time) {
@@ -67,6 +75,9 @@ func (s statusBar) view() string {
 		style = style.
 			Foreground(lipgloss.Color("1")).
 			Bold(true)
+	} else if s.isSuccess {
+		style = style.
+			Foreground(lipgloss.Color("2"))
 	} else {
 		style = style.
 			Foreground(lipgloss.Color("8"))
