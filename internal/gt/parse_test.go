@@ -383,6 +383,58 @@ func TestParseLine_DepthCalculation(t *testing.T) {
 	}
 }
 
+func TestStripAnnotation(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"my-branch", "my-branch"},
+		{"my-branch (merging)", "my-branch"},
+		{"my-branch (needs restack)", "my-branch"},
+		{"my-branch (rebasing)", "my-branch"},
+		{"branch-with-(parens)-in-name", "branch-with-(parens)-in-name"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		got := stripAnnotation(tt.input)
+		if got != tt.want {
+			t.Errorf("stripAnnotation(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestParseLine_WithAnnotation(t *testing.T) {
+	line := "│ ◯  my-branch (merging)"
+	pl, ok := parseLine(line)
+	if !ok {
+		t.Fatal("expected valid parse")
+	}
+	if pl.name != "my-branch" {
+		t.Errorf("name = %q, want %q", pl.name, "my-branch")
+	}
+}
+
+func TestParseLogShort_BranchWithAnnotation(t *testing.T) {
+	input := "│ ◉  feature-top (needs restack)\n│ ◯  feature-base\n◯─┘  main"
+	branches, err := ParseLogShort(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(branches) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(branches))
+	}
+	// Walk to find feature-top
+	featureBase := branches[0].Children[0]
+	if featureBase.Name != "feature-base" {
+		t.Errorf("expected feature-base, got %q", featureBase.Name)
+	}
+	featureTop := featureBase.Children[0]
+	if featureTop.Name != "feature-top" {
+		t.Errorf("expected feature-top (annotation stripped), got %q", featureTop.Name)
+	}
+}
+
 // countCurrent recursively counts branches with IsCurrent == true.
 func countCurrent(b *Branch) int {
 	count := 0

@@ -140,10 +140,13 @@ func parseLine(line string) (parsedLine, bool) {
 	depth := runePos / 2
 
 	// Extract the branch name: everything after the marker, stripped of
-	// connector chars (─, ┘) and whitespace.
+	// connector chars (─, ┘) and whitespace. Also strip any trailing
+	// parenthesized annotations like "(merging)" or "(needs restack)"
+	// that gt may append to branch names.
 	rest := line[byteOffset:]
 	name := stripConnectors(rest)
 	name = strings.TrimSpace(name)
+	name = stripAnnotation(name)
 
 	if name == "" {
 		return parsedLine{}, false
@@ -154,6 +157,15 @@ func parseLine(line string) (parsedLine, bool) {
 		depth:     depth,
 		isCurrent: isCurrent,
 	}, true
+}
+
+// stripAnnotation removes a trailing parenthesized annotation from a branch
+// name, e.g. "my-branch (merging)" → "my-branch".
+func stripAnnotation(name string) string {
+	if idx := strings.LastIndex(name, " ("); idx != -1 && strings.HasSuffix(name, ")") {
+		return name[:idx]
+	}
+	return name
 }
 
 // stripConnectors removes tree-drawing characters (─, ┘) from the string.
