@@ -109,7 +109,7 @@ func TestUpdate_LogResult_ParsedTree(t *testing.T) {
 		t.Errorf("root = %q, want %q", m.branches[0].Name, "main")
 	}
 
-	// View should contain tree connector characters from lipgloss/tree
+	// View should contain branch names from the parsed tree
 	view := m.View()
 	if !containsString(view, "feature-top") {
 		t.Error("view should contain 'feature-top'")

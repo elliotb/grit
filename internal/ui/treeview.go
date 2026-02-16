@@ -1,8 +1,9 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/tree"
 
 	"github.com/ejb/grit/internal/gt"
 )
@@ -10,39 +11,63 @@ import (
 var (
 	currentBranchStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
 	branchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	treeEnumStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	connectorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
-// renderTree converts parsed branches into a styled tree string using lipgloss/tree.
+// displayEntry represents a branch with its visual depth for flat rendering.
+type displayEntry struct {
+	branch *gt.Branch
+	depth  int
+}
+
+// renderTree converts parsed branches into a styled flat display with │ connectors.
+// Linear stacks are shown flat (all at the same indent), not nested.
 func renderTree(branches []*gt.Branch) string {
 	if len(branches) == 0 {
 		return "(no stacks)"
 	}
 
-	// Typically there's one root (the trunk). Render it directly.
-	if len(branches) == 1 {
-		return branchToTree(branches[0]).String()
-	}
+	entries := flattenForDisplay(branches)
 
-	// Multiple roots (unusual): render as children of a hidden-root tree.
-	t := tree.New().
-		EnumeratorStyle(treeEnumStyle)
-	for _, b := range branches {
-		t.Child(branchToTree(b))
+	var sb strings.Builder
+	for i, e := range entries {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		if e.depth > 0 {
+			sb.WriteString(connectorStyle.Render(strings.Repeat("│ ", e.depth)))
+		}
+		sb.WriteString(branchLabel(e.branch))
 	}
-	return t.String()
+	return sb.String()
 }
 
-// branchToTree recursively converts a Branch into a lipgloss/tree Tree node.
-func branchToTree(b *gt.Branch) *tree.Tree {
-	label := branchLabel(b)
-	t := tree.Root(label).
-		EnumeratorStyle(treeEnumStyle)
-
-	for _, child := range b.Children {
-		t.Child(branchToTree(child))
+// flattenForDisplay walks the branch tree and produces a flat list of entries
+// with visual depth. Linear chains (single-child branches) stay at the same
+// depth rather than increasing.
+func flattenForDisplay(branches []*gt.Branch) []displayEntry {
+	var entries []displayEntry
+	for _, root := range branches {
+		entries = append(entries, displayEntry{root, 0})
+		collectStack(root.Children, 1, true, &entries)
 	}
-	return t
+	return entries
+}
+
+// collectStack recursively collects branches into a flat display list.
+// Linear chains (single child) keep the same depth. Standalone branches
+// (leaf children directly under a root) are shown at depth 0.
+func collectStack(children []*gt.Branch, depth int, rootLevel bool, entries *[]displayEntry) {
+	for _, child := range children {
+		if len(child.Children) == 0 && rootLevel {
+			// Standalone leaf branch directly under root: show at depth 0
+			*entries = append(*entries, displayEntry{child, 0})
+		} else {
+			*entries = append(*entries, displayEntry{child, depth})
+			// Pass same depth for linear chains; no longer at root level
+			collectStack(child.Children, depth, false, entries)
+		}
+	}
 }
 
 // branchLabel returns a styled label for a branch.
