@@ -589,6 +589,28 @@ func TestView_BeforeReady(t *testing.T) {
 	}
 }
 
+func TestView_ContainsLegend(t *testing.T) {
+	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
+	view := m.View()
+
+	// Legend should contain key descriptions
+	for _, key := range []string{"checkout", "trunk", "submit", "restack", "sync", "quit"} {
+		if !containsString(view, key) {
+			t.Errorf("view should contain legend text %q", key)
+		}
+	}
+}
+
+func TestWindowSize_AccountsForLegend(t *testing.T) {
+	m := newTestModel("", nil)
+	m = sendWindowSize(m, 80, 24)
+
+	// Viewport height should be total height minus 2 (legend + status bar)
+	if m.viewport.Height != 22 {
+		t.Errorf("viewport height = %d, want 22 (24 - 2)", m.viewport.Height)
+	}
+}
+
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }

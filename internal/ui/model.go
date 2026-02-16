@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -228,8 +229,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		statusBarHeight := 1
-		viewportHeight := msg.Height - statusBarHeight
+		chromeHeight := 2 // legend + status bar
+		viewportHeight := msg.Height - chromeHeight
 
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, viewportHeight)
@@ -324,6 +325,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+var (
+	legendKeyStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("7"))
+	legendDescStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+)
+
+func (m Model) legendView() string {
+	pairs := []struct{ key, desc string }{
+		{"↑↓", "navigate"},
+		{"enter", "checkout"},
+		{"m", "trunk"},
+		{"s", "submit"},
+		{"S", "downstack"},
+		{"r", "restack"},
+		{"y", "sync"},
+		{"o", "open PR"},
+		{"q", "quit"},
+	}
+
+	var sb strings.Builder
+	for i, p := range pairs {
+		if i > 0 {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(legendKeyStyle.Render(p.key))
+		sb.WriteString(" ")
+		sb.WriteString(legendDescStyle.Render(p.desc))
+	}
+
+	style := lipgloss.NewStyle().Width(m.width).Padding(0, 1)
+	return style.Render(sb.String())
+}
+
 func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
@@ -332,6 +365,7 @@ func (m Model) View() string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.viewport.View(),
+		m.legendView(),
 		m.statusBar.view(),
 	)
 }
