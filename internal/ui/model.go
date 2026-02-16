@@ -35,6 +35,21 @@ type debounceFireMsg struct{ seq int }
 // debounceDuration is the delay before reloading after a filesystem event.
 const debounceDuration = 300 * time.Millisecond
 
+// diffDataMsg carries the result of loading diff metadata (parent + file list).
+type diffDataMsg struct {
+	branchName   string
+	parentBranch string
+	files        []diffFileEntry
+	err          error
+}
+
+// diffFileContentMsg carries the diff content for a single file.
+type diffFileContentMsg struct {
+	file    string
+	content string
+	err     error
+}
+
 // Model is the root bubbletea model for grit.
 type Model struct {
 	gtClient       *gt.Client
@@ -53,6 +68,8 @@ type Model struct {
 	watcher        *fsnotify.Watcher
 	debounceSeq    int
 	running        bool
+	mode           viewMode
+	diff           diffView
 }
 
 // New creates a new root model. If gitDir is non-empty, a file watcher is
@@ -134,6 +151,37 @@ func runAction(action, successMsg string, fn func(ctx context.Context) error) te
 	}
 }
 
+// loadDiffData fetches parent branch and file list for the given branch.
+func (m Model) loadDiffData(branchName string) tea.Cmd {
+	client := m.gtClient
+	return func() tea.Msg {
+		ctx := context.Background()
+		parent, err := client.Parent(ctx, branchName)
+		if err != nil {
+			return diffDataMsg{branchName: branchName, err: err}
+		}
+		statOutput, err := client.DiffStat(ctx, parent, branchName)
+		if err != nil {
+			return diffDataMsg{branchName: branchName, err: err}
+		}
+		files := parseDiffStat(statOutput)
+		return diffDataMsg{branchName: branchName, parentBranch: parent, files: files}
+	}
+}
+
+// loadDiffFile fetches the diff content for a specific file.
+func (m Model) loadDiffFile(parent, branch, file string) tea.Cmd {
+	client := m.gtClient
+	return func() tea.Msg {
+		ctx := context.Background()
+		content, err := client.DiffFile(ctx, parent, branch, file)
+		if err != nil {
+			return diffFileContentMsg{file: file, err: err}
+		}
+		return diffFileContentMsg{file: file, content: content}
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -148,6 +196,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Block all other input while an action is running.
 		if m.running {
+			break
+		}
+
+		// Diff mode key handling.
+		if m.mode == modeDiff {
+			switch {
+			case key.Matches(msg, m.keys.DiffClose):
+				m.mode = modeTree
+				m.diff = diffView{}
+				m.viewport.SetContent(renderTree(m.displayEntries, m.cursor))
+			case key.Matches(msg, m.keys.Tab):
+				if m.diff.focusedPanel == panelFileList {
+					m.diff.focusedPanel = panelDiff
+				} else {
+					m.diff.focusedPanel = panelFileList
+				}
+			case key.Matches(msg, m.keys.Up):
+				if m.diff.focusedPanel == panelFileList {
+					if m.diff.fileCursor > 0 {
+						m.diff.fileCursor--
+						file := m.diff.files[m.diff.fileCursor].path
+						m.diff.setDiffContent("")
+						cmds = append(cmds, m.loadDiffFile(m.diff.parentBranch, m.diff.branchName, file))
+					}
+				} else {
+					m.diff.diffViewport.LineUp(1)
+				}
+			case key.Matches(msg, m.keys.Down):
+				if m.diff.focusedPanel == panelFileList {
+					if m.diff.fileCursor < len(m.diff.files)-1 {
+						m.diff.fileCursor++
+						file := m.diff.files[m.diff.fileCursor].path
+						m.diff.setDiffContent("")
+						cmds = append(cmds, m.loadDiffFile(m.diff.parentBranch, m.diff.branchName, file))
+					}
+				} else {
+					m.diff.diffViewport.LineDown(1)
+				}
+			}
 			break
 		}
 
@@ -246,6 +333,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				})
 				cmds = append(cmds, spinnerCmd, actionCmd)
 			}
+		case key.Matches(msg, m.keys.Diff):
+			if branch := m.selectedBranch(); branch != nil {
+				m.running = true
+				name := branch.Name
+				spinnerCmd := m.statusBar.startSpinner("Loading diff for " + name + "...")
+				diffCmd := m.loadDiffData(name)
+				cmds = append(cmds, spinnerCmd, diffCmd)
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -265,6 +360,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.statusBar.setSize(msg.Width)
+		if m.mode == modeDiff {
+			m.diff.setSize(msg.Width, viewportHeight)
+		}
 
 	case logResultMsg:
 		if msg.err != nil {
@@ -296,6 +394,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.ready {
 			m.viewport.SetContent(content)
+		}
+
+	case diffDataMsg:
+		m.running = false
+		m.statusBar.stopSpinner()
+		if msg.err != nil {
+			m.statusBar.setMessage("Error: "+msg.err.Error(), true)
+		} else {
+			chromeHeight := 2 // legend + status bar
+			m.mode = modeDiff
+			m.diff = newDiffView(m.width, m.height-chromeHeight)
+			m.diff.branchName = msg.branchName
+			m.diff.parentBranch = msg.parentBranch
+			m.diff.setFiles(msg.files)
+			m.statusBar.setMessage("", false)
+			if len(msg.files) > 0 {
+				cmds = append(cmds, m.loadDiffFile(msg.parentBranch, msg.branchName, msg.files[0].path))
+			}
+		}
+
+	case diffFileContentMsg:
+		if msg.err != nil {
+			m.statusBar.setMessage("Error loading diff: "+msg.err.Error(), true)
+		} else {
+			m.diff.setDiffContent(msg.content)
 		}
 
 	case actionResultMsg:
@@ -350,20 +473,7 @@ var (
 	legendDescStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
-func (m Model) legendView() string {
-	pairs := []struct{ key, desc string }{
-		{"↑↓", "navigate"},
-		{"enter", "checkout"},
-		{"m", "trunk"},
-		{"s", "submit"},
-		{"S", "downstack"},
-		{"r", "restack"},
-		{"f", "fetch"},
-		{"y", "sync"},
-		{"o", "open PR"},
-		{"q", "quit"},
-	}
-
+func renderLegend(pairs []struct{ key, desc string }, width int) string {
 	var sb strings.Builder
 	for i, p := range pairs {
 		if i > 0 {
@@ -374,13 +484,49 @@ func (m Model) legendView() string {
 		sb.WriteString(legendDescStyle.Render(p.desc))
 	}
 
-	style := lipgloss.NewStyle().Width(m.width).Padding(0, 1)
+	style := lipgloss.NewStyle().Width(width).Padding(0, 1)
 	return style.Render(sb.String())
+}
+
+func (m Model) legendView() string {
+	pairs := []struct{ key, desc string }{
+		{"↑↓", "navigate"},
+		{"enter", "checkout"},
+		{"m", "trunk"},
+		{"d", "diff"},
+		{"s", "submit"},
+		{"S", "downstack"},
+		{"r", "restack"},
+		{"f", "fetch"},
+		{"y", "sync"},
+		{"o", "open PR"},
+		{"q", "quit"},
+	}
+	return renderLegend(pairs, m.width)
+}
+
+func (m Model) diffLegendView() string {
+	pairs := []struct{ key, desc string }{
+		{"↑↓", "navigate"},
+		{"tab", "switch panel"},
+		{"esc/d", "close"},
+		{"q", "quit"},
+	}
+	return renderLegend(pairs, m.width)
 }
 
 func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
+	}
+
+	if m.mode == modeDiff {
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			m.diff.view(),
+			m.diffLegendView(),
+			m.statusBar.view(),
+		)
 	}
 
 	return lipgloss.JoinVertical(
