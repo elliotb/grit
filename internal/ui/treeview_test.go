@@ -9,8 +9,15 @@ import (
 	"github.com/ejb/grit/internal/gt"
 )
 
+// renderTreeFromBranches is a test helper that flattens branches and renders
+// with cursor at position 0 (default).
+func renderTreeFromBranches(branches []*gt.Branch) string {
+	entries := flattenForDisplay(branches)
+	return renderTree(entries, 0)
+}
+
 func TestRenderTree_Empty(t *testing.T) {
-	result := renderTree(nil)
+	result := renderTree(nil, 0)
 	if result != "(no stacks)" {
 		t.Errorf("got %q, want %q", result, "(no stacks)")
 	}
@@ -20,15 +27,13 @@ func TestRenderTree_SingleRoot(t *testing.T) {
 	branches := []*gt.Branch{
 		{Name: "main", IsCurrent: true},
 	}
-	result := ansi.Strip(renderTree(branches))
+	result := ansi.Strip(renderTreeFromBranches(branches))
 	if !strings.Contains(result, "◉ main") {
 		t.Errorf("output should contain '◉ main', got:\n%s", result)
 	}
 }
 
 func TestRenderTree_LinearStack(t *testing.T) {
-	// Parser produces a chain: main → a → b → c
-	// Renderer should flatten to all at same depth with │ prefix
 	branches := []*gt.Branch{
 		{
 			Name: "main",
@@ -46,15 +51,13 @@ func TestRenderTree_LinearStack(t *testing.T) {
 		},
 	}
 
-	result := ansi.Strip(renderTree(branches))
+	result := ansi.Strip(renderTreeFromBranches(branches))
 	lines := strings.Split(result, "\n")
 
-	// Should have 3 lines: main, feature-a, feature-b
 	if len(lines) != 3 {
 		t.Fatalf("expected 3 lines, got %d:\n%s", len(lines), result)
 	}
 
-	// main at depth 0 (no │ prefix)
 	if strings.HasPrefix(lines[0], "│") {
 		t.Errorf("root should not have │ prefix, got: %q", lines[0])
 	}
@@ -62,14 +65,12 @@ func TestRenderTree_LinearStack(t *testing.T) {
 		t.Errorf("first line should contain 'main', got: %q", lines[0])
 	}
 
-	// feature-a and feature-b should both have │ prefix at same indent
 	for _, i := range []int{1, 2} {
 		if !strings.HasPrefix(lines[i], "│ ") {
 			t.Errorf("line %d should start with '│ ', got: %q", i, lines[i])
 		}
 	}
 
-	// Both stack branches at same indent (same number of │ prefixes)
 	if !strings.Contains(lines[1], "feature-a") {
 		t.Errorf("line 1 should contain 'feature-a', got: %q", lines[1])
 	}
@@ -89,7 +90,7 @@ func TestRenderTree_CurrentBranchMarker(t *testing.T) {
 		},
 	}
 
-	result := ansi.Strip(renderTree(branches))
+	result := ansi.Strip(renderTreeFromBranches(branches))
 
 	if !strings.Contains(result, "◉ feature-b") {
 		t.Errorf("current branch should have ◉ prefix, got:\n%s", result)
@@ -103,7 +104,6 @@ func TestRenderTree_CurrentBranchMarker(t *testing.T) {
 }
 
 func TestRenderTree_StandaloneBranch(t *testing.T) {
-	// A standalone branch (leaf child at root level) should be at depth 0
 	branches := []*gt.Branch{
 		{
 			Name: "main",
@@ -113,14 +113,13 @@ func TestRenderTree_StandaloneBranch(t *testing.T) {
 		},
 	}
 
-	result := ansi.Strip(renderTree(branches))
+	result := ansi.Strip(renderTreeFromBranches(branches))
 	lines := strings.Split(result, "\n")
 
 	if len(lines) != 2 {
 		t.Fatalf("expected 2 lines, got %d:\n%s", len(lines), result)
 	}
 
-	// standalone-fix should be at depth 0 (no │ prefix)
 	if strings.HasPrefix(lines[1], "│") {
 		t.Errorf("standalone branch should not have │ prefix, got: %q", lines[1])
 	}
@@ -130,7 +129,6 @@ func TestRenderTree_StandaloneBranch(t *testing.T) {
 }
 
 func TestRenderTree_MultipleStacks(t *testing.T) {
-	// main has a stack (a→b→c) and a standalone branch
 	branches := []*gt.Branch{
 		{
 			Name: "main",
@@ -146,15 +144,13 @@ func TestRenderTree_MultipleStacks(t *testing.T) {
 		},
 	}
 
-	result := ansi.Strip(renderTree(branches))
+	result := ansi.Strip(renderTreeFromBranches(branches))
 	lines := strings.Split(result, "\n")
 
-	// main (depth 0), stack-base (depth 1), stack-top (depth 1), standalone (depth 0)
 	if len(lines) != 4 {
 		t.Fatalf("expected 4 lines, got %d:\n%s", len(lines), result)
 	}
 
-	// Stack branches have │ prefix
 	if !strings.HasPrefix(lines[1], "│ ") {
 		t.Errorf("stack-base should have │ prefix, got: %q", lines[1])
 	}
@@ -162,15 +158,12 @@ func TestRenderTree_MultipleStacks(t *testing.T) {
 		t.Errorf("stack-top should have │ prefix, got: %q", lines[2])
 	}
 
-	// Standalone at depth 0
 	if strings.HasPrefix(lines[3], "│") {
 		t.Errorf("standalone should not have │ prefix, got: %q", lines[3])
 	}
 }
 
 func TestRenderTree_DeepChainFlattened(t *testing.T) {
-	// A long chain: main → a → b → c → d → e
-	// All should render at the same depth (│ prefix)
 	e := &gt.Branch{Name: "e", IsCurrent: true}
 	d := &gt.Branch{Name: "d", Children: []*gt.Branch{e}}
 	c := &gt.Branch{Name: "c", Children: []*gt.Branch{d}}
@@ -180,28 +173,62 @@ func TestRenderTree_DeepChainFlattened(t *testing.T) {
 		{Name: "main", Children: []*gt.Branch{a}},
 	}
 
-	result := ansi.Strip(renderTree(branches))
+	result := ansi.Strip(renderTreeFromBranches(branches))
 	lines := strings.Split(result, "\n")
 
-	// 6 lines: main + 5 stack branches
 	if len(lines) != 6 {
 		t.Fatalf("expected 6 lines, got %d:\n%s", len(lines), result)
 	}
 
-	// main at depth 0
 	if strings.HasPrefix(lines[0], "│") {
 		t.Errorf("main should not have │ prefix")
 	}
 
-	// All stack branches at same depth (single │ prefix)
 	for i := 1; i <= 5; i++ {
 		if !strings.HasPrefix(lines[i], "│ ") {
 			t.Errorf("line %d should start with '│ ', got: %q", i, lines[i])
 		}
-		// Should NOT have double │ (no nesting)
 		if strings.HasPrefix(lines[i], "│ │") {
 			t.Errorf("line %d should not be double-nested, got: %q", i, lines[i])
 		}
+	}
+}
+
+func TestRenderTree_CursorHighlight(t *testing.T) {
+	entries := []displayEntry{
+		{branch: &gt.Branch{Name: "main"}, depth: 0},
+		{branch: &gt.Branch{Name: "feature-a"}, depth: 1},
+		{branch: &gt.Branch{Name: "feature-b", IsCurrent: true}, depth: 1},
+	}
+
+	// Cursor on middle entry
+	result := ansi.Strip(renderTree(entries, 1))
+	lines := strings.Split(result, "\n")
+
+	// All entries should still be present
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines, got %d", len(lines))
+	}
+	if !strings.Contains(lines[0], "main") {
+		t.Errorf("line 0 should contain 'main', got %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "feature-a") {
+		t.Errorf("line 1 should contain 'feature-a', got %q", lines[1])
+	}
+	if !strings.Contains(lines[2], "feature-b") {
+		t.Errorf("line 2 should contain 'feature-b', got %q", lines[2])
+	}
+}
+
+func TestRenderTree_CursorOutOfRange(t *testing.T) {
+	entries := []displayEntry{
+		{branch: &gt.Branch{Name: "main"}, depth: 0},
+	}
+
+	// Cursor beyond range — no entry should get selected style
+	result := ansi.Strip(renderTree(entries, 5))
+	if !strings.Contains(result, "◯ main") {
+		t.Errorf("out-of-range cursor should render normally, got:\n%s", result)
 	}
 }
 
@@ -229,7 +256,7 @@ func TestFlattenForDisplay_Entries(t *testing.T) {
 	}{
 		{"main", 0},
 		{"a", 1},
-		{"b", 1},         // same depth as a (flattened chain)
+		{"b", 1},          // same depth as a (flattened chain)
 		{"standalone", 0}, // standalone at root level
 	}
 

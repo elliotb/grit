@@ -28,19 +28,21 @@ const debounceDuration = 300 * time.Millisecond
 
 // Model is the root bubbletea model for grit.
 type Model struct {
-	gtClient    *gt.Client
-	viewport    viewport.Model
-	statusBar   statusBar
-	keys        keyMap
-	ready       bool
-	branches    []*gt.Branch
-	rawOutput   string
-	err         error
-	width       int
-	height      int
-	gitDir      string
-	watcher     *fsnotify.Watcher
-	debounceSeq int
+	gtClient       *gt.Client
+	viewport       viewport.Model
+	statusBar      statusBar
+	keys           keyMap
+	ready          bool
+	branches       []*gt.Branch
+	displayEntries []displayEntry
+	cursor         int
+	rawOutput      string
+	err            error
+	width          int
+	height         int
+	gitDir         string
+	watcher        *fsnotify.Watcher
+	debounceSeq    int
 }
 
 // New creates a new root model. If gitDir is non-empty, a file watcher is
@@ -75,6 +77,35 @@ func (m Model) loadLog() tea.Cmd {
 	}
 }
 
+// selectedBranch returns the branch at the current cursor position, or nil.
+func (m Model) selectedBranch() *gt.Branch {
+	if m.cursor >= 0 && m.cursor < len(m.displayEntries) {
+		return m.displayEntries[m.cursor].branch
+	}
+	return nil
+}
+
+// preserveCursor tries to keep the cursor on the same branch after a tree
+// reload. It searches by name first, falls back to the IsCurrent branch,
+// then falls back to index 0.
+func (m *Model) preserveCursor(oldBranchName string) {
+	if oldBranchName != "" {
+		for i, e := range m.displayEntries {
+			if e.branch.Name == oldBranchName {
+				m.cursor = i
+				return
+			}
+		}
+	}
+	for i, e := range m.displayEntries {
+		if e.branch.IsCurrent {
+			m.cursor = i
+			return
+		}
+	}
+	m.cursor = 0
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -93,7 +124,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, viewportHeight)
-			m.viewport.SetContent(renderTree(m.branches))
+			m.viewport.KeyMap = viewport.KeyMap{}
+			m.viewport.SetContent(renderTree(m.displayEntries, m.cursor))
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
@@ -122,7 +154,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			branches, parseErr := gt.ParseLogShort(m.rawOutput)
 			if parseErr == nil {
 				m.branches = branches
-				content = renderTree(branches)
+				oldName := ""
+				if b := m.selectedBranch(); b != nil {
+					oldName = b.Name
+				}
+				m.displayEntries = flattenForDisplay(branches)
+				m.preserveCursor(oldName)
+				content = renderTree(m.displayEntries, m.cursor)
 			}
 		}
 

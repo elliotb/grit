@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	currentBranchStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
-	branchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	connectorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	currentBranchStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
+	branchStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	connectorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	selectedBranchStyle = lipgloss.NewStyle().Bold(true).Reverse(true)
 )
 
 // displayEntry represents a branch with its visual depth for flat rendering.
@@ -20,14 +21,12 @@ type displayEntry struct {
 	depth  int
 }
 
-// renderTree converts parsed branches into a styled flat display with │ connectors.
-// Linear stacks are shown flat (all at the same indent), not nested.
-func renderTree(branches []*gt.Branch) string {
-	if len(branches) == 0 {
+// renderTree converts display entries into a styled flat display with │ connectors.
+// The entry at the cursor index is highlighted with reverse video.
+func renderTree(entries []displayEntry, cursor int) string {
+	if len(entries) == 0 {
 		return "(no stacks)"
 	}
-
-	entries := flattenForDisplay(branches)
 
 	var sb strings.Builder
 	for i, e := range entries {
@@ -37,7 +36,11 @@ func renderTree(branches []*gt.Branch) string {
 		if e.depth > 0 {
 			sb.WriteString(connectorStyle.Render(strings.Repeat("│ ", e.depth)))
 		}
-		sb.WriteString(branchLabel(e.branch))
+		if i == cursor {
+			sb.WriteString(selectedBranchLabel(e.branch))
+		} else {
+			sb.WriteString(branchLabel(e.branch))
+		}
 	}
 	return sb.String()
 }
@@ -76,4 +79,13 @@ func branchLabel(b *gt.Branch) string {
 		return currentBranchStyle.Render("◉ " + b.Name)
 	}
 	return branchStyle.Render("◯ " + b.Name)
+}
+
+// selectedBranchLabel returns a highlighted label for the cursor-selected branch.
+func selectedBranchLabel(b *gt.Branch) string {
+	marker := "◯ "
+	if b.IsCurrent {
+		marker = "◉ "
+	}
+	return selectedBranchStyle.Render(marker + b.Name)
 }
