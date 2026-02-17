@@ -61,13 +61,13 @@ The tree auto-refreshes when your `.git` directory changes, so it stays current 
 ## Installation
 
 ```bash
-go install github.com/ejb/grit@latest
+go install github.com/elliotb/grit@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/ejb/grit.git
+git clone https://github.com/elliotb/grit.git
 cd grit
 go build
 ./grit
