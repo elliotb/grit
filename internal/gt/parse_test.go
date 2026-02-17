@@ -595,6 +595,100 @@ func TestParseLogShort_DepthJumpSimple(t *testing.T) {
 	}
 }
 
+func TestParseLogShort_MultipleDeferredSameDepth(t *testing.T) {
+	// Multiple depth-2 branches that all get deferred during tree building.
+	// They should form a chain (not siblings) since they're the same depth.
+	input := `◯      02-04-upgrade_elixir
+│ ◯    add_kaffy_admin
+│ ◯    add_ks2_historical
+│ │ ◉  replace_route
+│ │ ◯  add_reset_button
+│ │ ◯  fix_sort_order
+│ │ ◯  use_full-width_layout
+◯─┴─┘  master`
+
+	branches, err := ParseLogShort(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(branches) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(branches))
+	}
+
+	root := branches[0]
+	if root.Name != "master" {
+		t.Errorf("root = %q, want %q", root.Name, "master")
+	}
+	if len(root.Children) != 2 {
+		t.Fatalf("master children = %d, want 2", len(root.Children))
+	}
+
+	// First child: stack base
+	base := root.Children[0]
+	if base.Name != "add_ks2_historical" {
+		t.Errorf("first child = %q, want add_ks2_historical", base.Name)
+	}
+	if len(base.Children) != 1 {
+		t.Fatalf("base children = %d, want 1", len(base.Children))
+	}
+
+	admin := base.Children[0]
+	if admin.Name != "add_kaffy_admin" {
+		t.Errorf("admin = %q, want add_kaffy_admin", admin.Name)
+	}
+	// admin should have exactly 1 child (start of the depth-2 chain)
+	if len(admin.Children) != 1 {
+		t.Fatalf("admin children = %d, want 1 (deferred branches should chain, not be siblings)", len(admin.Children))
+	}
+
+	// Walk the depth-2 chain: use_full-width → fix_sort → add_reset → replace
+	expectedChain := []string{"use_full-width_layout", "fix_sort_order", "add_reset_button", "replace_route"}
+	branch := admin
+	for _, expected := range expectedChain {
+		if len(branch.Children) != 1 {
+			t.Fatalf("branch %q children = %d, want 1", branch.Name, len(branch.Children))
+		}
+		branch = branch.Children[0]
+		if branch.Name != expected {
+			t.Errorf("got %q, want %q", branch.Name, expected)
+		}
+	}
+
+	// replace_route should be the current branch at the tip
+	if !branch.IsCurrent {
+		t.Error("replace_route should be current")
+	}
+	if len(branch.Children) != 0 {
+		t.Errorf("tip children = %d, want 0", len(branch.Children))
+	}
+}
+
+func TestParseLogShort_OrderField(t *testing.T) {
+	// Verify that Order reflects the original gt log short line position.
+	input := `│ ◉  feature-top
+│ ◯  feature-base
+◯─┘  main`
+
+	branches, err := ParseLogShort(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	root := branches[0]
+	// In gt log short: feature-top=0, feature-base=1, main=2
+	if root.Order != 2 {
+		t.Errorf("main order = %d, want 2", root.Order)
+	}
+	base := root.Children[0]
+	if base.Order != 1 {
+		t.Errorf("feature-base order = %d, want 1", base.Order)
+	}
+	top := base.Children[0]
+	if top.Order != 0 {
+		t.Errorf("feature-top order = %d, want 0", top.Order)
+	}
+}
+
 // countCurrent recursively counts branches with IsCurrent == true.
 func countCurrent(b *Branch) int {
 	count := 0

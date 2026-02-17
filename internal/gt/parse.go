@@ -17,6 +17,7 @@ type Branch struct {
 	IsCurrent  bool
 	Annotation string // e.g. "needs restack", "merging", "" if none
 	Depth      int    // visual depth from gt log short (0 = trunk level)
+	Order      int    // original line position in gt log short output (for display ordering)
 	PR         PRInfo
 	Children   []*Branch
 }
@@ -27,6 +28,7 @@ type parsedLine struct {
 	depth      int
 	isCurrent  bool
 	annotation string
+	order      int // original line position (before reversal)
 }
 
 // ParseLogShort parses the output of `gt log short` into a tree of branches.
@@ -46,6 +48,12 @@ func ParseLogShort(output string) ([]*Branch, error) {
 		return nil, nil
 	}
 
+	// Record original line positions before reversing, so display
+	// can reproduce gt log short order (top-of-stack first, trunk last).
+	for i := range parsed {
+		parsed[i].order = i
+	}
+
 	// Reverse: gt log short lists top-of-stack first, trunk last.
 	// We want trunk first so we can build parent→child relationships.
 	for i, j := 0, len(parsed)-1; i < j; i, j = i+1, j-1 {
@@ -53,7 +61,7 @@ func ParseLogShort(output string) ([]*Branch, error) {
 	}
 
 	// Build tree. The first entry (after reversal) is the trunk/root.
-	root := &Branch{Name: parsed[0].name, IsCurrent: parsed[0].isCurrent, Annotation: parsed[0].annotation, Depth: parsed[0].depth}
+	root := &Branch{Name: parsed[0].name, IsCurrent: parsed[0].isCurrent, Annotation: parsed[0].annotation, Depth: parsed[0].depth, Order: parsed[0].order}
 	roots := []*Branch{root}
 
 	// parentAtDepth tracks the "tip" branch at each depth level.
@@ -69,7 +77,7 @@ func ParseLogShort(output string) ([]*Branch, error) {
 
 	for i := 1; i < len(parsed); i++ {
 		p := parsed[i]
-		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation, Depth: p.depth}
+		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation, Depth: p.depth, Order: p.order}
 
 		switch {
 		case p.depth == 0:
@@ -117,9 +125,14 @@ func ParseLogShort(output string) ([]*Branch, error) {
 	}
 
 	// Process deferred branches. Their parent depths should now be established.
+	// Check for same-depth chaining first (multiple deferred branches at the
+	// same depth form a linear stack), then fall back to parent depth.
 	for _, p := range deferred {
-		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation, Depth: p.depth}
-		if parent, ok := parentAtDepth[p.depth-1]; ok {
+		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation, Depth: p.depth, Order: p.order}
+		if existing, ok := parentAtDepth[p.depth]; ok {
+			// Same depth already seen: chain within the stack.
+			existing.Children = append(existing.Children, b)
+		} else if parent, ok := parentAtDepth[p.depth-1]; ok {
 			parent.Children = append(parent.Children, b)
 		} else {
 			// Fallback: attach to root if parent still not found.

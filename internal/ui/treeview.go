@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -51,23 +52,22 @@ func renderTree(entries []displayEntry, cursor int) string {
 	return sb.String()
 }
 
-// flattenForDisplay walks the branch tree and produces a flat list of entries
-// using each branch's Depth (from gt log short) for visual indentation.
+// flattenForDisplay collects all branches from the tree and sorts them by
+// their original gt log short line order (top-of-stack first, trunk last).
 func flattenForDisplay(branches []*gt.Branch) []displayEntry {
 	var entries []displayEntry
-	for _, root := range branches {
-		entries = append(entries, displayEntry{root, root.Depth})
-		appendChildren(root, &entries)
-	}
+	collectAll(branches, &entries)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].branch.Order < entries[j].branch.Order
+	})
 	return entries
 }
 
-// appendChildren recursively appends a branch's children to the display list,
-// using each child's stored Depth for visual indentation.
-func appendChildren(parent *gt.Branch, entries *[]displayEntry) {
-	for _, child := range parent.Children {
-		*entries = append(*entries, displayEntry{child, child.Depth})
-		appendChildren(child, entries)
+// collectAll recursively collects all branches from the tree into a flat list.
+func collectAll(branches []*gt.Branch, entries *[]displayEntry) {
+	for _, b := range branches {
+		*entries = append(*entries, displayEntry{b, b.Depth})
+		collectAll(b.Children, entries)
 	}
 }
 

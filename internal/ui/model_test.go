@@ -164,8 +164,12 @@ func TestUpdate_LogResult_PopulatesDisplayEntries(t *testing.T) {
 	if len(m.displayEntries) != 3 {
 		t.Fatalf("expected 3 display entries, got %d", len(m.displayEntries))
 	}
-	if m.displayEntries[0].branch.Name != "main" {
-		t.Errorf("entry 0 = %q, want %q", m.displayEntries[0].branch.Name, "main")
+	// Display order matches gt log short: top-of-stack first, trunk last.
+	if m.displayEntries[0].branch.Name != "feature-top" {
+		t.Errorf("entry 0 = %q, want %q", m.displayEntries[0].branch.Name, "feature-top")
+	}
+	if m.displayEntries[2].branch.Name != "main" {
+		t.Errorf("entry 2 = %q, want %q", m.displayEntries[2].branch.Name, "main")
 	}
 }
 
@@ -810,7 +814,7 @@ func TestDiffKey_OpensLoading(t *testing.T) {
 
 func TestDiffKey_OnTrunk_ShowsError(t *testing.T) {
 	m := loadedDiffModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
-	m.cursor = 0 // on "main" (trunk/root)
+	m.cursor = 2 // on "main" (trunk/root — last entry in gt log short order)
 
 	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'d'}}))
 	m = updated.(Model)
@@ -1525,7 +1529,7 @@ func TestActionResult_ErrorReloadsTree(t *testing.T) {
 
 func TestSubmitOnTrunk_ShowsError(t *testing.T) {
 	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
-	m.cursor = 0 // on trunk
+	m.cursor = 2 // on trunk (last entry in gt log short order)
 
 	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'s'}}))
 	m = updated.(Model)
@@ -1543,7 +1547,7 @@ func TestSubmitOnTrunk_ShowsError(t *testing.T) {
 
 func TestDownstackSubmitOnTrunk_ShowsError(t *testing.T) {
 	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
-	m.cursor = 0
+	m.cursor = 2 // on trunk (last entry in gt log short order)
 
 	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'S'}}))
 	m = updated.(Model)
@@ -1558,7 +1562,7 @@ func TestDownstackSubmitOnTrunk_ShowsError(t *testing.T) {
 
 func TestRestackOnTrunk_ShowsError(t *testing.T) {
 	m := loadedModel("│ ◉  feature-top\n│ ◯  feature-base\n◯─┘  main")
-	m.cursor = 0
+	m.cursor = 2 // on trunk (last entry in gt log short order)
 
 	updated, _ := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune{'r'}}))
 	m = updated.(Model)

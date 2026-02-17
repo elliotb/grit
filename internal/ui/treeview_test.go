@@ -34,17 +34,21 @@ func TestRenderTree_SingleRoot(t *testing.T) {
 }
 
 func TestRenderTree_LinearStack(t *testing.T) {
+	// gt log short order: feature-b (top), feature-a, main (trunk)
 	branches := []*gt.Branch{
 		{
-			Name: "main",
+			Name:  "main",
+			Order: 2,
 			Children: []*gt.Branch{
 				{
 					Name:  "feature-a",
 					Depth: 1,
+					Order: 1,
 					Children: []*gt.Branch{
 						{
 							Name:      "feature-b",
 							Depth:     1,
+							Order:     0,
 							IsCurrent: true,
 						},
 					},
@@ -60,34 +64,36 @@ func TestRenderTree_LinearStack(t *testing.T) {
 		t.Fatalf("expected 3 lines, got %d:\n%s", len(lines), result)
 	}
 
-	if strings.HasPrefix(lines[0], "│") {
-		t.Errorf("root should not have │ prefix, got: %q", lines[0])
+	// gt ls order: top-of-stack first, trunk last
+	if !strings.Contains(lines[0], "feature-b") {
+		t.Errorf("line 0 should contain 'feature-b' (top of stack), got: %q", lines[0])
 	}
-	if !strings.Contains(lines[0], "main") {
-		t.Errorf("first line should contain 'main', got: %q", lines[0])
+	if !strings.Contains(lines[1], "feature-a") {
+		t.Errorf("line 1 should contain 'feature-a', got: %q", lines[1])
+	}
+	if !strings.Contains(lines[2], "main") {
+		t.Errorf("line 2 should contain 'main' (trunk), got: %q", lines[2])
 	}
 
-	for _, i := range []int{1, 2} {
+	// feature-b and feature-a at depth 1, main at depth 0
+	for _, i := range []int{0, 1} {
 		if !strings.HasPrefix(lines[i], "│ ") {
 			t.Errorf("line %d should start with '│ ', got: %q", i, lines[i])
 		}
 	}
-
-	if !strings.Contains(lines[1], "feature-a") {
-		t.Errorf("line 1 should contain 'feature-a', got: %q", lines[1])
-	}
-	if !strings.Contains(lines[2], "feature-b") {
-		t.Errorf("line 2 should contain 'feature-b', got: %q", lines[2])
+	if strings.HasPrefix(lines[2], "│") {
+		t.Errorf("trunk should not have │ prefix, got: %q", lines[2])
 	}
 }
 
 func TestRenderTree_CurrentBranchMarker(t *testing.T) {
 	branches := []*gt.Branch{
 		{
-			Name: "main",
+			Name:  "main",
+			Order: 2,
 			Children: []*gt.Branch{
-				{Name: "feature-a", Depth: 1},
-				{Name: "feature-b", Depth: 1, IsCurrent: true},
+				{Name: "feature-a", Depth: 1, Order: 1},
+				{Name: "feature-b", Depth: 1, Order: 0, IsCurrent: true},
 			},
 		},
 	}
@@ -106,11 +112,13 @@ func TestRenderTree_CurrentBranchMarker(t *testing.T) {
 }
 
 func TestRenderTree_StandaloneBranch(t *testing.T) {
+	// A standalone branch at depth 0 (like in a multi-stack gt output)
 	branches := []*gt.Branch{
 		{
-			Name: "main",
+			Name:  "main",
+			Order: 1,
 			Children: []*gt.Branch{
-				{Name: "standalone-fix"},
+				{Name: "standalone-fix", Order: 0},
 			},
 		},
 	}
@@ -122,27 +130,31 @@ func TestRenderTree_StandaloneBranch(t *testing.T) {
 		t.Fatalf("expected 2 lines, got %d:\n%s", len(lines), result)
 	}
 
-	if strings.HasPrefix(lines[1], "│") {
-		t.Errorf("standalone branch should not have │ prefix, got: %q", lines[1])
+	// standalone-fix first (Order 0), main last (Order 1)
+	if !strings.Contains(lines[0], "standalone-fix") {
+		t.Errorf("line 0 should contain 'standalone-fix', got: %q", lines[0])
 	}
-	if !strings.Contains(lines[1], "standalone-fix") {
-		t.Errorf("line 1 should contain 'standalone-fix', got: %q", lines[1])
+	if strings.HasPrefix(lines[0], "│") {
+		t.Errorf("standalone branch at depth 0 should not have │ prefix, got: %q", lines[0])
 	}
 }
 
 func TestRenderTree_MultipleStacks(t *testing.T) {
+	// gt log short order: standalone, stack-top, stack-base, main
 	branches := []*gt.Branch{
 		{
-			Name: "main",
+			Name:  "main",
+			Order: 3,
 			Children: []*gt.Branch{
 				{
 					Name:  "stack-base",
 					Depth: 1,
+					Order: 2,
 					Children: []*gt.Branch{
-						{Name: "stack-top", Depth: 1, IsCurrent: true},
+						{Name: "stack-top", Depth: 1, Order: 1, IsCurrent: true},
 					},
 				},
-				{Name: "standalone"},
+				{Name: "standalone", Order: 0},
 			},
 		},
 	}
@@ -154,26 +166,30 @@ func TestRenderTree_MultipleStacks(t *testing.T) {
 		t.Fatalf("expected 4 lines, got %d:\n%s", len(lines), result)
 	}
 
+	// gt ls order: standalone (depth 0), stack-top (depth 1), stack-base (depth 1), main (depth 0)
+	if strings.HasPrefix(lines[0], "│") {
+		t.Errorf("standalone should not have │ prefix, got: %q", lines[0])
+	}
 	if !strings.HasPrefix(lines[1], "│ ") {
-		t.Errorf("stack-base should have │ prefix, got: %q", lines[1])
+		t.Errorf("stack-top should have │ prefix, got: %q", lines[1])
 	}
 	if !strings.HasPrefix(lines[2], "│ ") {
-		t.Errorf("stack-top should have │ prefix, got: %q", lines[2])
+		t.Errorf("stack-base should have │ prefix, got: %q", lines[2])
 	}
-
 	if strings.HasPrefix(lines[3], "│") {
-		t.Errorf("standalone should not have │ prefix, got: %q", lines[3])
+		t.Errorf("main (trunk) should not have │ prefix, got: %q", lines[3])
 	}
 }
 
 func TestRenderTree_DeepChainFlattened(t *testing.T) {
-	e := &gt.Branch{Name: "e", Depth: 1, IsCurrent: true}
-	d := &gt.Branch{Name: "d", Depth: 1, Children: []*gt.Branch{e}}
-	c := &gt.Branch{Name: "c", Depth: 1, Children: []*gt.Branch{d}}
-	b := &gt.Branch{Name: "b", Depth: 1, Children: []*gt.Branch{c}}
-	a := &gt.Branch{Name: "a", Depth: 1, Children: []*gt.Branch{b}}
+	// gt log short order: e (top), d, c, b, a, main (trunk)
+	e := &gt.Branch{Name: "e", Depth: 1, Order: 0, IsCurrent: true}
+	d := &gt.Branch{Name: "d", Depth: 1, Order: 1, Children: []*gt.Branch{e}}
+	c := &gt.Branch{Name: "c", Depth: 1, Order: 2, Children: []*gt.Branch{d}}
+	b := &gt.Branch{Name: "b", Depth: 1, Order: 3, Children: []*gt.Branch{c}}
+	a := &gt.Branch{Name: "a", Depth: 1, Order: 4, Children: []*gt.Branch{b}}
 	branches := []*gt.Branch{
-		{Name: "main", Children: []*gt.Branch{a}},
+		{Name: "main", Order: 5, Children: []*gt.Branch{a}},
 	}
 
 	result := ansi.Strip(renderTreeFromBranches(branches))
@@ -183,11 +199,13 @@ func TestRenderTree_DeepChainFlattened(t *testing.T) {
 		t.Fatalf("expected 6 lines, got %d:\n%s", len(lines), result)
 	}
 
-	if strings.HasPrefix(lines[0], "│") {
+	// Trunk (main) is last
+	if strings.HasPrefix(lines[5], "│") {
 		t.Errorf("main should not have │ prefix")
 	}
 
-	for i := 1; i <= 5; i++ {
+	// All stack branches at depth 1
+	for i := 0; i <= 4; i++ {
 		if !strings.HasPrefix(lines[i], "│ ") {
 			t.Errorf("line %d should start with '│ ', got: %q", i, lines[i])
 		}
@@ -356,18 +374,21 @@ func TestRenderTree_AnnotationAndPR(t *testing.T) {
 }
 
 func TestFlattenForDisplay_Entries(t *testing.T) {
+	// gt log short order: b (top), a, standalone, main (trunk)
 	branches := []*gt.Branch{
 		{
-			Name: "main",
+			Name:  "main",
+			Order: 3,
 			Children: []*gt.Branch{
 				{
 					Name:  "a",
 					Depth: 1,
+					Order: 1,
 					Children: []*gt.Branch{
-						{Name: "b", Depth: 1},
+						{Name: "b", Depth: 1, Order: 0},
 					},
 				},
-				{Name: "standalone"},
+				{Name: "standalone", Order: 2},
 			},
 		},
 	}
@@ -378,10 +399,10 @@ func TestFlattenForDisplay_Entries(t *testing.T) {
 		name  string
 		depth int
 	}{
-		{"main", 0},
-		{"a", 1},
-		{"b", 1},          // same depth as a (flattened chain)
-		{"standalone", 0}, // standalone at root level
+		{"b", 1},          // top of stack (Order 0)
+		{"a", 1},          // base of stack (Order 1)
+		{"standalone", 0}, // standalone at depth 0 (Order 2)
+		{"main", 0},       // trunk (Order 3)
 	}
 
 	if len(entries) != len(expected) {
@@ -399,33 +420,33 @@ func TestFlattenForDisplay_Entries(t *testing.T) {
 }
 
 func TestRenderTree_BranchingStack(t *testing.T) {
-	// Reproduces the user's bug: a depth-2 branch should show with │ │ prefix,
-	// not flattened to depth 1 like its parent stack.
-	//
-	// gt log short output:
-	//   ◯      02-04-upgrade_elixir          (depth 0)
-	//   │ ◯    add_kaffy_admin               (depth 1)
-	//   │ ◯    add_ks2_historical            (depth 1)
-	//   │ │ ◉  02-17-use_full-width          (depth 2)
-	//   ◯─┴─┘  master                        (depth 0)
+	// gt log short output (and desired display order):
+	//   ◯      02-04-upgrade_elixir          (depth 0, Order 0)
+	//   │ ◯    add_kaffy_admin               (depth 1, Order 1)
+	//   │ ◯    add_ks2_historical            (depth 1, Order 2)
+	//   │ │ ◉  02-17-use_full-width          (depth 2, Order 3)
+	//   ◯─┴─┘  master                        (depth 0, Order 4)
 	branches := []*gt.Branch{
 		{
-			Name: "master",
+			Name:  "master",
+			Order: 4,
 			Children: []*gt.Branch{
 				{
 					Name:  "add_ks2_historical",
 					Depth: 1,
+					Order: 2,
 					Children: []*gt.Branch{
 						{
 							Name:  "add_kaffy_admin",
 							Depth: 1,
+							Order: 1,
 							Children: []*gt.Branch{
-								{Name: "02-17-use_full-width", Depth: 2, IsCurrent: true},
+								{Name: "02-17-use_full-width", Depth: 2, Order: 3, IsCurrent: true},
 							},
 						},
 					},
 				},
-				{Name: "02-04-upgrade_elixir"},
+				{Name: "02-04-upgrade_elixir", Order: 0},
 			},
 		},
 	}
@@ -437,52 +458,63 @@ func TestRenderTree_BranchingStack(t *testing.T) {
 		t.Fatalf("expected 5 lines, got %d:\n%s", len(lines), result)
 	}
 
-	// master at depth 0
-	if strings.HasPrefix(lines[0], "│") {
-		t.Errorf("master should not have │ prefix, got: %q", lines[0])
+	// Display order matches gt ls: 02-04, add_kaffy, add_ks2, 02-17, master
+	if !strings.Contains(lines[0], "02-04-upgrade_elixir") {
+		t.Errorf("line 0 should be 02-04 (standalone), got: %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "add_kaffy_admin") {
+		t.Errorf("line 1 should be add_kaffy (top of depth-1 stack), got: %q", lines[1])
+	}
+	if !strings.Contains(lines[2], "add_ks2_historical") {
+		t.Errorf("line 2 should be add_ks2 (base of depth-1 stack), got: %q", lines[2])
+	}
+	if !strings.Contains(lines[3], "02-17-use_full-width") {
+		t.Errorf("line 3 should be 02-17 (depth-2 branch), got: %q", lines[3])
+	}
+	if !strings.Contains(lines[4], "master") {
+		t.Errorf("line 4 should be master (trunk), got: %q", lines[4])
 	}
 
-	// add_ks2 and add_kaffy at depth 1 (single │)
+	// Depth checks
+	if strings.HasPrefix(lines[0], "│") {
+		t.Errorf("02-04 (depth 0) should not have │ prefix, got: %q", lines[0])
+	}
 	for _, i := range []int{1, 2} {
 		if !strings.HasPrefix(lines[i], "│ ") {
 			t.Errorf("line %d should start with '│ ', got: %q", i, lines[i])
 		}
-		if strings.HasPrefix(lines[i], "│ │") {
-			t.Errorf("line %d should have single │, got: %q", i, lines[i])
-		}
 	}
-
-	// 02-17 at depth 2 (double │ │)
 	if !strings.HasPrefix(lines[3], "│ │ ") {
-		t.Errorf("depth-2 branch should start with '│ │ ', got: %q", lines[3])
+		t.Errorf("02-17 (depth 2) should start with '│ │ ', got: %q", lines[3])
 	}
-
-	// 02-04 at depth 0 (standalone)
 	if strings.HasPrefix(lines[4], "│") {
-		t.Errorf("standalone should not have │ prefix, got: %q", lines[4])
+		t.Errorf("master (trunk) should not have │ prefix, got: %q", lines[4])
 	}
 }
 
 func TestFlattenForDisplay_BranchingStackDepths(t *testing.T) {
-	// Verify the exact display depths for a branching stack scenario.
+	// Verify the exact display depths and order for a branching stack scenario.
 	branches := []*gt.Branch{
 		{
-			Name: "master",
+			Name:  "master",
+			Order: 4,
 			Children: []*gt.Branch{
 				{
 					Name:  "stack-a",
 					Depth: 1,
+					Order: 2,
 					Children: []*gt.Branch{
 						{
 							Name:  "stack-a-top",
 							Depth: 1,
+							Order: 1,
 							Children: []*gt.Branch{
-								{Name: "branch-off", Depth: 2},
+								{Name: "branch-off", Depth: 2, Order: 3},
 							},
 						},
 					},
 				},
-				{Name: "standalone"},
+				{Name: "standalone", Order: 0},
 			},
 		},
 	}
@@ -493,11 +525,11 @@ func TestFlattenForDisplay_BranchingStackDepths(t *testing.T) {
 		name  string
 		depth int
 	}{
-		{"master", 0},
-		{"stack-a", 1},
-		{"stack-a-top", 1},
-		{"branch-off", 2},
 		{"standalone", 0},
+		{"stack-a-top", 1},
+		{"stack-a", 1},
+		{"branch-off", 2},
+		{"master", 0},
 	}
 
 	if len(entries) != len(expected) {
