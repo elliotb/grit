@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/ejb/grit/internal/gt"
-	"github.com/ejb/grit/internal/ui"
+	"github.com/elliotb/grit/internal/gt"
+	"github.com/elliotb/grit/internal/ui"
 )
 
 func main() {

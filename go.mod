@@ -1,4 +1,4 @@
-module github.com/ejb/grit
+module github.com/elliotb/grit
 
 go 1.25.0
 

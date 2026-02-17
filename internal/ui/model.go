@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/ejb/grit/internal/gt"
+	"github.com/elliotb/grit/internal/gt"
 )
 
 // logResultMsg is sent when `gt log short` completes.

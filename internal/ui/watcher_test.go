@@ -9,7 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/ejb/grit/internal/gt"
+	"github.com/elliotb/grit/internal/gt"
 )
 
 // setupFakeGitDir creates a minimal .git directory structure for watcher tests.

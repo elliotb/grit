@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/ejb/grit/internal/gt"
+	"github.com/elliotb/grit/internal/gt"
 )
 
 // renderTreeFromBranches is a test helper that flattens branches and renders
