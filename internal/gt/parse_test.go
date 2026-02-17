@@ -30,6 +30,9 @@ func TestParseLogShort_SingleBranch(t *testing.T) {
 	if !root.IsCurrent {
 		t.Error("root should be current branch")
 	}
+	if root.Depth != 0 {
+		t.Errorf("root depth = %d, want 0", root.Depth)
+	}
 	if len(root.Children) != 0 {
 		t.Errorf("expected 0 children, got %d", len(root.Children))
 	}
@@ -72,6 +75,9 @@ func TestParseLogShort_LinearStack(t *testing.T) {
 	if root.IsCurrent {
 		t.Error("main should not be current")
 	}
+	if root.Depth != 0 {
+		t.Errorf("main depth = %d, want 0", root.Depth)
+	}
 
 	// main → feature-a
 	if len(root.Children) != 1 {
@@ -84,6 +90,9 @@ func TestParseLogShort_LinearStack(t *testing.T) {
 	if a.IsCurrent {
 		t.Error("feature-a should not be current")
 	}
+	if a.Depth != 1 {
+		t.Errorf("feature-a depth = %d, want 1", a.Depth)
+	}
 
 	// feature-a → feature-b
 	if len(a.Children) != 1 {
@@ -92,6 +101,9 @@ func TestParseLogShort_LinearStack(t *testing.T) {
 	b := a.Children[0]
 	if b.Name != "feature-b" {
 		t.Errorf("child = %q, want %q", b.Name, "feature-b")
+	}
+	if b.Depth != 1 {
+		t.Errorf("feature-b depth = %d, want 1", b.Depth)
 	}
 
 	// feature-b → feature-c
@@ -104,6 +116,9 @@ func TestParseLogShort_LinearStack(t *testing.T) {
 	}
 	if !c.IsCurrent {
 		t.Error("feature-c should be current")
+	}
+	if c.Depth != 1 {
+		t.Errorf("feature-c depth = %d, want 1", c.Depth)
 	}
 	if len(c.Children) != 0 {
 		t.Errorf("feature-c children = %d, want 0", len(c.Children))
@@ -495,6 +510,9 @@ func TestParseLogShort_DepthJump(t *testing.T) {
 	if base.Name != "02-12-add_ks2_historical_attainment_schema_migration_and_factory" {
 		t.Errorf("first child = %q, want schema branch", base.Name)
 	}
+	if base.Depth != 1 {
+		t.Errorf("schema depth = %d, want 1", base.Depth)
+	}
 
 	// Stack chain: schema → admin
 	if len(base.Children) != 1 {
@@ -503,6 +521,9 @@ func TestParseLogShort_DepthJump(t *testing.T) {
 	admin := base.Children[0]
 	if admin.Name != "02-12-add_kaffy_admin_for_ks2_historical_attainments" {
 		t.Errorf("second in chain = %q, want admin branch", admin.Name)
+	}
+	if admin.Depth != 1 {
+		t.Errorf("admin depth = %d, want 1", admin.Depth)
 	}
 
 	// admin → 02-17 (the depth-2 branch that was deferred)
@@ -516,11 +537,17 @@ func TestParseLogShort_DepthJump(t *testing.T) {
 	if !tip.IsCurrent {
 		t.Error("02-17 branch should be current")
 	}
+	if tip.Depth != 2 {
+		t.Errorf("tip depth = %d, want 2", tip.Depth)
+	}
 
 	// Second child of master: standalone branch
 	standalone := root.Children[1]
 	if standalone.Name != "02-04-upgrade_elixir_to_1.20.0-rc.1" {
 		t.Errorf("standalone = %q, want 02-04 branch", standalone.Name)
+	}
+	if standalone.Depth != 0 {
+		t.Errorf("standalone depth = %d, want 0", standalone.Depth)
 	}
 	if len(standalone.Children) != 0 {
 		t.Errorf("standalone children = %d, want 0", len(standalone.Children))

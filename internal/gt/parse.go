@@ -16,6 +16,7 @@ type Branch struct {
 	Name       string
 	IsCurrent  bool
 	Annotation string // e.g. "needs restack", "merging", "" if none
+	Depth      int    // visual depth from gt log short (0 = trunk level)
 	PR         PRInfo
 	Children   []*Branch
 }
@@ -52,7 +53,7 @@ func ParseLogShort(output string) ([]*Branch, error) {
 	}
 
 	// Build tree. The first entry (after reversal) is the trunk/root.
-	root := &Branch{Name: parsed[0].name, IsCurrent: parsed[0].isCurrent, Annotation: parsed[0].annotation}
+	root := &Branch{Name: parsed[0].name, IsCurrent: parsed[0].isCurrent, Annotation: parsed[0].annotation, Depth: parsed[0].depth}
 	roots := []*Branch{root}
 
 	// parentAtDepth tracks the "tip" branch at each depth level.
@@ -68,7 +69,7 @@ func ParseLogShort(output string) ([]*Branch, error) {
 
 	for i := 1; i < len(parsed); i++ {
 		p := parsed[i]
-		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation}
+		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation, Depth: p.depth}
 
 		switch {
 		case p.depth == 0:
@@ -117,7 +118,7 @@ func ParseLogShort(output string) ([]*Branch, error) {
 
 	// Process deferred branches. Their parent depths should now be established.
 	for _, p := range deferred {
-		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation}
+		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation, Depth: p.depth}
 		if parent, ok := parentAtDepth[p.depth-1]; ok {
 			parent.Children = append(parent.Children, b)
 		} else {

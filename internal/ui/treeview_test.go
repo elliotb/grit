@@ -39,10 +39,12 @@ func TestRenderTree_LinearStack(t *testing.T) {
 			Name: "main",
 			Children: []*gt.Branch{
 				{
-					Name: "feature-a",
+					Name:  "feature-a",
+					Depth: 1,
 					Children: []*gt.Branch{
 						{
 							Name:      "feature-b",
+							Depth:     1,
 							IsCurrent: true,
 						},
 					},
@@ -84,8 +86,8 @@ func TestRenderTree_CurrentBranchMarker(t *testing.T) {
 		{
 			Name: "main",
 			Children: []*gt.Branch{
-				{Name: "feature-a"},
-				{Name: "feature-b", IsCurrent: true},
+				{Name: "feature-a", Depth: 1},
+				{Name: "feature-b", Depth: 1, IsCurrent: true},
 			},
 		},
 	}
@@ -134,9 +136,10 @@ func TestRenderTree_MultipleStacks(t *testing.T) {
 			Name: "main",
 			Children: []*gt.Branch{
 				{
-					Name: "stack-base",
+					Name:  "stack-base",
+					Depth: 1,
 					Children: []*gt.Branch{
-						{Name: "stack-top", IsCurrent: true},
+						{Name: "stack-top", Depth: 1, IsCurrent: true},
 					},
 				},
 				{Name: "standalone"},
@@ -164,11 +167,11 @@ func TestRenderTree_MultipleStacks(t *testing.T) {
 }
 
 func TestRenderTree_DeepChainFlattened(t *testing.T) {
-	e := &gt.Branch{Name: "e", IsCurrent: true}
-	d := &gt.Branch{Name: "d", Children: []*gt.Branch{e}}
-	c := &gt.Branch{Name: "c", Children: []*gt.Branch{d}}
-	b := &gt.Branch{Name: "b", Children: []*gt.Branch{c}}
-	a := &gt.Branch{Name: "a", Children: []*gt.Branch{b}}
+	e := &gt.Branch{Name: "e", Depth: 1, IsCurrent: true}
+	d := &gt.Branch{Name: "d", Depth: 1, Children: []*gt.Branch{e}}
+	c := &gt.Branch{Name: "c", Depth: 1, Children: []*gt.Branch{d}}
+	b := &gt.Branch{Name: "b", Depth: 1, Children: []*gt.Branch{c}}
+	a := &gt.Branch{Name: "a", Depth: 1, Children: []*gt.Branch{b}}
 	branches := []*gt.Branch{
 		{Name: "main", Children: []*gt.Branch{a}},
 	}
@@ -358,9 +361,10 @@ func TestFlattenForDisplay_Entries(t *testing.T) {
 			Name: "main",
 			Children: []*gt.Branch{
 				{
-					Name: "a",
+					Name:  "a",
+					Depth: 1,
 					Children: []*gt.Branch{
-						{Name: "b"},
+						{Name: "b", Depth: 1},
 					},
 				},
 				{Name: "standalone"},
@@ -378,6 +382,122 @@ func TestFlattenForDisplay_Entries(t *testing.T) {
 		{"a", 1},
 		{"b", 1},          // same depth as a (flattened chain)
 		{"standalone", 0}, // standalone at root level
+	}
+
+	if len(entries) != len(expected) {
+		t.Fatalf("expected %d entries, got %d", len(expected), len(entries))
+	}
+
+	for i, want := range expected {
+		if entries[i].branch.Name != want.name {
+			t.Errorf("entry[%d].name = %q, want %q", i, entries[i].branch.Name, want.name)
+		}
+		if entries[i].depth != want.depth {
+			t.Errorf("entry[%d].depth = %d, want %d", i, entries[i].depth, want.depth)
+		}
+	}
+}
+
+func TestRenderTree_BranchingStack(t *testing.T) {
+	// Reproduces the user's bug: a depth-2 branch should show with │ │ prefix,
+	// not flattened to depth 1 like its parent stack.
+	//
+	// gt log short output:
+	//   ◯      02-04-upgrade_elixir          (depth 0)
+	//   │ ◯    add_kaffy_admin               (depth 1)
+	//   │ ◯    add_ks2_historical            (depth 1)
+	//   │ │ ◉  02-17-use_full-width          (depth 2)
+	//   ◯─┴─┘  master                        (depth 0)
+	branches := []*gt.Branch{
+		{
+			Name: "master",
+			Children: []*gt.Branch{
+				{
+					Name:  "add_ks2_historical",
+					Depth: 1,
+					Children: []*gt.Branch{
+						{
+							Name:  "add_kaffy_admin",
+							Depth: 1,
+							Children: []*gt.Branch{
+								{Name: "02-17-use_full-width", Depth: 2, IsCurrent: true},
+							},
+						},
+					},
+				},
+				{Name: "02-04-upgrade_elixir"},
+			},
+		},
+	}
+
+	result := ansi.Strip(renderTreeFromBranches(branches))
+	lines := strings.Split(result, "\n")
+
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 lines, got %d:\n%s", len(lines), result)
+	}
+
+	// master at depth 0
+	if strings.HasPrefix(lines[0], "│") {
+		t.Errorf("master should not have │ prefix, got: %q", lines[0])
+	}
+
+	// add_ks2 and add_kaffy at depth 1 (single │)
+	for _, i := range []int{1, 2} {
+		if !strings.HasPrefix(lines[i], "│ ") {
+			t.Errorf("line %d should start with '│ ', got: %q", i, lines[i])
+		}
+		if strings.HasPrefix(lines[i], "│ │") {
+			t.Errorf("line %d should have single │, got: %q", i, lines[i])
+		}
+	}
+
+	// 02-17 at depth 2 (double │ │)
+	if !strings.HasPrefix(lines[3], "│ │ ") {
+		t.Errorf("depth-2 branch should start with '│ │ ', got: %q", lines[3])
+	}
+
+	// 02-04 at depth 0 (standalone)
+	if strings.HasPrefix(lines[4], "│") {
+		t.Errorf("standalone should not have │ prefix, got: %q", lines[4])
+	}
+}
+
+func TestFlattenForDisplay_BranchingStackDepths(t *testing.T) {
+	// Verify the exact display depths for a branching stack scenario.
+	branches := []*gt.Branch{
+		{
+			Name: "master",
+			Children: []*gt.Branch{
+				{
+					Name:  "stack-a",
+					Depth: 1,
+					Children: []*gt.Branch{
+						{
+							Name:  "stack-a-top",
+							Depth: 1,
+							Children: []*gt.Branch{
+								{Name: "branch-off", Depth: 2},
+							},
+						},
+					},
+				},
+				{Name: "standalone"},
+			},
+		},
+	}
+
+	entries := flattenForDisplay(branches)
+
+	expected := []struct {
+		name  string
+		depth int
+	}{
+		{"master", 0},
+		{"stack-a", 1},
+		{"stack-a-top", 1},
+		{"branch-off", 2},
+		{"standalone", 0},
 	}
 
 	if len(entries) != len(expected) {

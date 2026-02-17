@@ -52,30 +52,22 @@ func renderTree(entries []displayEntry, cursor int) string {
 }
 
 // flattenForDisplay walks the branch tree and produces a flat list of entries
-// with visual depth. Linear chains (single-child branches) stay at the same
-// depth rather than increasing.
+// using each branch's Depth (from gt log short) for visual indentation.
 func flattenForDisplay(branches []*gt.Branch) []displayEntry {
 	var entries []displayEntry
 	for _, root := range branches {
-		entries = append(entries, displayEntry{root, 0})
-		collectStack(root.Children, 1, true, &entries)
+		entries = append(entries, displayEntry{root, root.Depth})
+		appendChildren(root, &entries)
 	}
 	return entries
 }
 
-// collectStack recursively collects branches into a flat display list.
-// Linear chains (single child) keep the same depth. Standalone branches
-// (leaf children directly under a root) are shown at depth 0.
-func collectStack(children []*gt.Branch, depth int, rootLevel bool, entries *[]displayEntry) {
-	for _, child := range children {
-		if len(child.Children) == 0 && rootLevel {
-			// Standalone leaf branch directly under root: show at depth 0
-			*entries = append(*entries, displayEntry{child, 0})
-		} else {
-			*entries = append(*entries, displayEntry{child, depth})
-			// Pass same depth for linear chains; no longer at root level
-			collectStack(child.Children, depth, false, entries)
-		}
+// appendChildren recursively appends a branch's children to the display list,
+// using each child's stored Depth for visual indentation.
+func appendChildren(parent *gt.Branch, entries *[]displayEntry) {
+	for _, child := range parent.Children {
+		*entries = append(*entries, displayEntry{child, child.Depth})
+		appendChildren(child, entries)
 	}
 }
 
