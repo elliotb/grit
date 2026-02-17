@@ -328,6 +328,20 @@ func TestParseLine_BranchWithConnectors(t *testing.T) {
 	}
 }
 
+func TestParseLine_TrunkWithMultipleConnectors(t *testing.T) {
+	// Trunk with ┴ junction from multiple stacks merging
+	pl, ok := parseLine("◯─┴─┘  master")
+	if !ok {
+		t.Fatal("expected line to parse")
+	}
+	if pl.name != "master" {
+		t.Errorf("name = %q, want %q", pl.name, "master")
+	}
+	if pl.depth != 0 {
+		t.Errorf("depth = %d, want 0", pl.depth)
+	}
+}
+
 func TestParseLine_IndentedCurrent(t *testing.T) {
 	pl, ok := parseLine("│ ◉  feature-branch")
 	if !ok {
@@ -445,6 +459,112 @@ func TestParseLogShort_BranchWithAnnotation(t *testing.T) {
 	}
 	if featureTop.Annotation != "needs restack" {
 		t.Errorf("feature-top annotation = %q, want %q", featureTop.Annotation, "needs restack")
+	}
+}
+
+func TestParseLogShort_DepthJump(t *testing.T) {
+	// Multi-depth stack where after reversal a depth-2 branch appears
+	// before any depth-1 branch. This matches real gt ls output from
+	// a repo with a standalone branch + a 3-level stack.
+	input := `◯      02-04-upgrade_elixir_to_1.20.0-rc.1
+│ ◯    02-12-add_kaffy_admin_for_ks2_historical_attainments
+│ ◯    02-12-add_ks2_historical_attainment_schema_migration_and_factory
+│ │ ◉  02-17-use_full-width_layout_for_eyfs_statements_explorer
+◯─┴─┘  master`
+
+	branches, err := ParseLogShort(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(branches) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(branches))
+	}
+
+	root := branches[0]
+	if root.Name != "master" {
+		t.Errorf("root = %q, want %q", root.Name, "master")
+	}
+
+	// master should have 2 children: the stack base + standalone branch
+	if len(root.Children) != 2 {
+		t.Fatalf("master children = %d, want 2", len(root.Children))
+	}
+
+	// First child: the stack base (closest to trunk after reversal)
+	base := root.Children[0]
+	if base.Name != "02-12-add_ks2_historical_attainment_schema_migration_and_factory" {
+		t.Errorf("first child = %q, want schema branch", base.Name)
+	}
+
+	// Stack chain: schema → admin
+	if len(base.Children) != 1 {
+		t.Fatalf("schema branch children = %d, want 1", len(base.Children))
+	}
+	admin := base.Children[0]
+	if admin.Name != "02-12-add_kaffy_admin_for_ks2_historical_attainments" {
+		t.Errorf("second in chain = %q, want admin branch", admin.Name)
+	}
+
+	// admin → 02-17 (the depth-2 branch that was deferred)
+	if len(admin.Children) != 1 {
+		t.Fatalf("admin branch children = %d, want 1", len(admin.Children))
+	}
+	tip := admin.Children[0]
+	if tip.Name != "02-17-use_full-width_layout_for_eyfs_statements_explorer" {
+		t.Errorf("tip = %q, want 02-17 branch", tip.Name)
+	}
+	if !tip.IsCurrent {
+		t.Error("02-17 branch should be current")
+	}
+
+	// Second child of master: standalone branch
+	standalone := root.Children[1]
+	if standalone.Name != "02-04-upgrade_elixir_to_1.20.0-rc.1" {
+		t.Errorf("standalone = %q, want 02-04 branch", standalone.Name)
+	}
+	if len(standalone.Children) != 0 {
+		t.Errorf("standalone children = %d, want 0", len(standalone.Children))
+	}
+}
+
+func TestParseLogShort_DepthJumpSimple(t *testing.T) {
+	// Minimal case: trunk at depth 0, then a depth-2 branch, then a depth-1 branch.
+	// After reversal: trunk(0), branch-d2(2), branch-d1(1)
+	// The depth-2 branch should be deferred and attached to branch-d1.
+	input := `│ │ ◉  branch-d2
+│ ◯    branch-d1
+◯─┘    main`
+
+	branches, err := ParseLogShort(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(branches) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(branches))
+	}
+
+	root := branches[0]
+	if root.Name != "main" {
+		t.Errorf("root = %q, want %q", root.Name, "main")
+	}
+	if len(root.Children) != 1 {
+		t.Fatalf("root children = %d, want 1", len(root.Children))
+	}
+
+	d1 := root.Children[0]
+	if d1.Name != "branch-d1" {
+		t.Errorf("depth-1 branch = %q, want %q", d1.Name, "branch-d1")
+	}
+	if len(d1.Children) != 1 {
+		t.Fatalf("depth-1 children = %d, want 1", len(d1.Children))
+	}
+
+	d2 := d1.Children[0]
+	if d2.Name != "branch-d2" {
+		t.Errorf("depth-2 branch = %q, want %q", d2.Name, "branch-d2")
+	}
+	if !d2.IsCurrent {
+		t.Error("depth-2 branch should be current")
 	}
 }
 

@@ -61,6 +61,11 @@ func ParseLogShort(output string) ([]*Branch, error) {
 	parentAtDepth := map[int]*Branch{parsed[0].depth: root}
 	prevDepth := parsed[0].depth
 
+	// Deferred branches whose parent depth hasn't been established yet.
+	// This happens when a multi-depth stack is reversed: a depth-2 branch
+	// can appear before any depth-1 branch.
+	var deferred []parsedLine
+
 	for i := 1; i < len(parsed); i++ {
 		p := parsed[i]
 		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation}
@@ -84,6 +89,11 @@ func ParseLogShort(output string) ([]*Branch, error) {
 			// Parent is the tip at the depth above.
 			if parent, ok := parentAtDepth[p.depth-1]; ok {
 				parent.Children = append(parent.Children, b)
+			} else {
+				// Parent depth not yet established (depth jump > 1).
+				// Defer this branch for later processing.
+				deferred = append(deferred, p)
+				continue // Don't update prevDepth or parentAtDepth
 			}
 			parentAtDepth[p.depth] = b
 
@@ -103,6 +113,18 @@ func ParseLogShort(output string) ([]*Branch, error) {
 		}
 
 		prevDepth = p.depth
+	}
+
+	// Process deferred branches. Their parent depths should now be established.
+	for _, p := range deferred {
+		b := &Branch{Name: p.name, IsCurrent: p.isCurrent, Annotation: p.annotation}
+		if parent, ok := parentAtDepth[p.depth-1]; ok {
+			parent.Children = append(parent.Children, b)
+		} else {
+			// Fallback: attach to root if parent still not found.
+			root.Children = append(root.Children, b)
+		}
+		parentAtDepth[p.depth] = b
 	}
 
 	return roots, nil
@@ -211,7 +233,7 @@ func stripConnectors(s string) string {
 	var b strings.Builder
 	for _, r := range s {
 		switch r {
-		case '─', '┘', '│':
+		case '─', '┘', '│', '┴', '┬', '├', '└', '┐', '┌', '┤':
 			continue
 		default:
 			b.WriteRune(r)
