@@ -689,6 +689,80 @@ func TestParseLogShort_OrderField(t *testing.T) {
 	}
 }
 
+func TestParseLogShort_StackPositions(t *testing.T) {
+	// main → feature-a → feature-b → feature-c (current)
+	input := `│ ◉  feature-c
+│ ◯  feature-b
+│ ◯  feature-a
+◯─┘  main`
+
+	branches, err := ParseLogShort(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	root := branches[0]
+	if root.StackPos != 0 {
+		t.Errorf("trunk StackPos = %d, want 0", root.StackPos)
+	}
+
+	want := []struct {
+		name string
+		pos  int
+	}{
+		{"feature-a", 1},
+		{"feature-b", 2},
+		{"feature-c", 3},
+	}
+	branch := root
+	for _, w := range want {
+		if len(branch.Children) != 1 {
+			t.Fatalf("branch %q children = %d, want 1", branch.Name, len(branch.Children))
+		}
+		branch = branch.Children[0]
+		if branch.Name != w.name {
+			t.Fatalf("got %q, want %q", branch.Name, w.name)
+		}
+		if branch.StackPos != w.pos {
+			t.Errorf("%q StackPos = %d, want %d", branch.Name, branch.StackPos, w.pos)
+		}
+	}
+}
+
+func TestStackSize(t *testing.T) {
+	// Linear stack off main: a → b → c. A separate sibling stack off main: x.
+	// And a branching stack off main: p → {q, r}.
+	c := &Branch{Name: "c"}
+	b := &Branch{Name: "b", Children: []*Branch{c}}
+	a := &Branch{Name: "a", Children: []*Branch{b}}
+	x := &Branch{Name: "x"}
+	q := &Branch{Name: "q"}
+	r := &Branch{Name: "r"}
+	p := &Branch{Name: "p", Children: []*Branch{q, r}}
+	main := &Branch{Name: "main", Children: []*Branch{a, x, p}}
+	branches := []*Branch{main}
+
+	tests := []struct {
+		name string
+		want int
+	}{
+		{"a", 3},    // a → b → c
+		{"b", 3},    // same stack as a
+		{"c", 3},    // same stack as a
+		{"x", 1},    // sibling stack on its own
+		{"p", 3},    // p → {q, r}
+		{"q", 3},    // counts the whole branching stack including the other tip
+		{"r", 3},    // same
+		{"main", 0}, // trunk itself is not in any stack
+		{"nope", 0}, // not found
+	}
+	for _, tt := range tests {
+		if got := StackSize(branches, tt.name); got != tt.want {
+			t.Errorf("StackSize(%q) = %d, want %d", tt.name, got, tt.want)
+		}
+	}
+}
+
 // countCurrent recursively counts branches with IsCurrent == true.
 func countCurrent(b *Branch) int {
 	count := 0

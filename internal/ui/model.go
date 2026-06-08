@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -347,6 +348,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if branch := m.selectedBranch(); branch != nil {
 				if _, hasParent := gt.FindParent(m.branches, branch.Name); !hasParent {
 					m.statusBar.setMessage("Cannot submit trunk branch", true)
+				} else if size := gt.StackSize(m.branches, branch.Name); size > gt.MaxSubmittableStack {
+					m.statusBar.setMessage(fmt.Sprintf("Stack has %d PRs — over Graphite's %d-PR submit limit", size, gt.MaxSubmittableStack), true)
 				} else {
 					m.running = true
 					name := branch.Name
@@ -362,6 +365,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if branch := m.selectedBranch(); branch != nil {
 				if _, hasParent := gt.FindParent(m.branches, branch.Name); !hasParent {
 					m.statusBar.setMessage("Cannot submit trunk branch", true)
+				} else if branch.StackPos > gt.MaxSubmittableStack {
+					m.statusBar.setMessage(fmt.Sprintf("%d PRs downstack — over the %d-PR limit; select branch #%d or lower", branch.StackPos, gt.MaxSubmittableStack, gt.MaxSubmittableStack), true)
 				} else {
 					m.running = true
 					name := branch.Name

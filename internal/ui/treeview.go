@@ -20,6 +20,7 @@ var (
 	prDraftStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	prMergedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
 	prClosedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	overLimitStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1"))
 )
 
 // displayEntry represents a branch with its visual depth for flat rendering.
@@ -119,12 +120,30 @@ func prLabelPlain(pr gt.PRInfo) string {
 	}
 }
 
+// overLimitLabel returns a styled tag flagging branches past Graphite's
+// submittable-stack limit, or empty string if within the limit.
+func overLimitLabel(b *gt.Branch) string {
+	if b.StackPos <= gt.MaxSubmittableStack {
+		return ""
+	}
+	return " " + overLimitStyle.Render("⚠ over limit")
+}
+
+// overLimitLabelPlain returns an unstyled over-limit tag for use in
+// reverse-video labels.
+func overLimitLabelPlain(b *gt.Branch) string {
+	if b.StackPos <= gt.MaxSubmittableStack {
+		return ""
+	}
+	return " ⚠ over limit"
+}
+
 // branchLabel returns a styled label for a branch.
 func branchLabel(b *gt.Branch) string {
 	if b.IsCurrent {
-		return currentBranchStyle.Render("◉ "+b.Name) + annotationLabel(b) + prLabel(b.PR)
+		return currentBranchStyle.Render("◉ "+b.Name) + annotationLabel(b) + prLabel(b.PR) + overLimitLabel(b)
 	}
-	return branchStyle.Render("◯ "+b.Name) + annotationLabel(b) + prLabel(b.PR)
+	return branchStyle.Render("◯ "+b.Name) + annotationLabel(b) + prLabel(b.PR) + overLimitLabel(b)
 }
 
 // selectedBranchLabel returns a highlighted label for the cursor-selected branch.
@@ -138,5 +157,6 @@ func selectedBranchLabel(b *gt.Branch) string {
 		label += " (" + b.Annotation + ")"
 	}
 	label += prLabelPlain(b.PR)
+	label += overLimitLabelPlain(b)
 	return selectedBranchStyle.Render(label)
 }

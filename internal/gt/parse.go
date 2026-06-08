@@ -11,6 +11,10 @@ type PRInfo struct {
 	State  string // "OPEN", "DRAFT", "MERGED", "CLOSED", or "" if no PR
 }
 
+// MaxSubmittableStack is Graphite's cap on the number of PRs (non-trunk
+// branches) in a single submitted stack.
+const MaxSubmittableStack = 50
+
 // Branch represents a single branch in the Graphite stack tree.
 type Branch struct {
 	Name       string
@@ -18,6 +22,7 @@ type Branch struct {
 	Annotation string // e.g. "needs restack", "merging", "" if none
 	Depth      int    // visual depth from gt log short (0 = trunk level)
 	Order      int    // original line position in gt log short output (for display ordering)
+	StackPos   int    // position from trunk; 0 = trunk, 1 = first PR above trunk
 	PR         PRInfo
 	Children   []*Branch
 }
@@ -141,7 +146,59 @@ func ParseLogShort(output string) ([]*Branch, error) {
 		parentAtDepth[p.depth] = b
 	}
 
+	for _, root := range roots {
+		assignStackPositions(root, 0)
+	}
+
 	return roots, nil
+}
+
+// assignStackPositions sets StackPos on b and its descendants. Trunk is 0;
+// each level below trunk increments by one.
+func assignStackPositions(b *Branch, pos int) {
+	b.StackPos = pos
+	for _, c := range b.Children {
+		assignStackPositions(c, pos+1)
+	}
+}
+
+// StackSize returns the number of non-trunk branches in the stack that
+// contains name — every branch in the subtree rooted at the stack's base
+// (the direct child of trunk on the path to name). Handles branching stacks
+// (multiple tips) and independent sibling stacks off trunk. Returns 0 if name
+// is trunk or not found.
+func StackSize(branches []*Branch, name string) int {
+	for _, root := range branches {
+		for _, base := range root.Children {
+			if subtreeContains(base, name) {
+				return countSubtree(base)
+			}
+		}
+	}
+	return 0
+}
+
+// subtreeContains reports whether name is b or any of its descendants.
+func subtreeContains(b *Branch, name string) bool {
+	if b.Name == name {
+		return true
+	}
+	for _, c := range b.Children {
+		if subtreeContains(c, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// countSubtree returns the number of branches in the subtree rooted at b,
+// including b itself.
+func countSubtree(b *Branch) int {
+	count := 1
+	for _, c := range b.Children {
+		count += countSubtree(c)
+	}
+	return count
 }
 
 const (

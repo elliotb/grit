@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -1586,4 +1587,82 @@ func searchString(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// tallStackModel builds a ready model whose tree is a single linear stack of n
+// non-trunk branches (b1..bn) off "main", with StackPos assigned. The cursor
+// starts on the named branch.
+func tallStackModel(n int, cursorOn string) Model {
+	root := &gt.Branch{Name: "main", StackPos: 0, Order: n}
+	cur := root
+	for i := 1; i <= n; i++ {
+		child := &gt.Branch{
+			Name:     fmt.Sprintf("b%d", i),
+			Depth:    1,
+			StackPos: i,
+			Order:    n - i, // top-of-stack (largest i) sorts first
+		}
+		cur.Children = []*gt.Branch{child}
+		cur = child
+	}
+	m := newTestModel("", nil)
+	m.branches = []*gt.Branch{root}
+	m.displayEntries = flattenForDisplay(m.branches)
+	for i, e := range m.displayEntries {
+		if e.branch.Name == cursorOn {
+			m.cursor = i
+			break
+		}
+	}
+	return m
+}
+
+func TestStackSubmit_BlockedWhenStackTooLarge(t *testing.T) {
+	m := tallStackModel(gt.MaxSubmittableStack+1, "b51")
+	m = sendKey(m, 's')
+
+	if m.running {
+		t.Error("running should be false: oversized stack submit must be blocked")
+	}
+	if !m.statusBar.isError {
+		t.Error("status bar should show an error")
+	}
+	if !containsString(m.statusBar.message, "over") {
+		t.Errorf("status message = %q, want to mention being over the limit", m.statusBar.message)
+	}
+}
+
+func TestStackSubmit_AllowedAtLimit(t *testing.T) {
+	m := tallStackModel(gt.MaxSubmittableStack, "b50")
+	m = sendKey(m, 's')
+
+	if !m.running {
+		t.Error("running should be true: a 50-PR stack submit is within the limit")
+	}
+}
+
+func TestDownstackSubmit_BlockedAboveLimit(t *testing.T) {
+	// 60-tall stack; downstack from #51 would submit 51 PRs → blocked.
+	m := tallStackModel(60, "b51")
+	m = sendKey(m, 'S')
+
+	if m.running {
+		t.Error("running should be false: downstack submit above position 50 must be blocked")
+	}
+	if !m.statusBar.isError {
+		t.Error("status bar should show an error")
+	}
+	if !containsString(m.statusBar.message, "over") {
+		t.Errorf("status message = %q, want to mention being over the limit", m.statusBar.message)
+	}
+}
+
+func TestDownstackSubmit_AllowedAtLimitInOversizedStack(t *testing.T) {
+	// 60-tall stack, but downstack from #50 submits only the bottom 50 → allowed.
+	m := tallStackModel(60, "b50")
+	m = sendKey(m, 'S')
+
+	if !m.running {
+		t.Error("running should be true: downstack submit of the bottom 50 is allowed")
+	}
 }

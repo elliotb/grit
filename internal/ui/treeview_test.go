@@ -545,3 +545,55 @@ func TestFlattenForDisplay_BranchingStackDepths(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderTree_OverLimitIndicator(t *testing.T) {
+	// A branch at position 51 is over the limit; its sibling-below at 50 is not.
+	// gt log short order: over (top), within, main (trunk).
+	branches := []*gt.Branch{
+		{
+			Name:  "main",
+			Order: 2,
+			Children: []*gt.Branch{
+				{
+					Name:     "within",
+					Depth:    1,
+					Order:    1,
+					StackPos: gt.MaxSubmittableStack, // 50 — last submittable
+					Children: []*gt.Branch{
+						{
+							Name:     "over",
+							Depth:    1,
+							Order:    0,
+							StackPos: gt.MaxSubmittableStack + 1, // 51 — over limit
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Cursor on the over-limit branch (line 0): exercises selectedBranchLabel.
+	entries := flattenForDisplay(branches)
+	result := ansi.Strip(renderTree(entries, 0))
+	lines := strings.Split(result, "\n")
+
+	if !strings.Contains(lines[0], "over") || !strings.Contains(lines[0], "over limit") {
+		t.Errorf("over-limit branch (cursor) should be tagged 'over limit', got: %q", lines[0])
+	}
+	if strings.Contains(lines[1], "over limit") {
+		t.Errorf("within-limit branch should not be tagged, got: %q", lines[1])
+	}
+	if strings.Contains(lines[2], "over limit") {
+		t.Errorf("trunk should not be tagged, got: %q", lines[2])
+	}
+
+	// Cursor elsewhere (line 2 = trunk): exercises branchLabel for the tagged row.
+	result = ansi.Strip(renderTree(entries, 2))
+	lines = strings.Split(result, "\n")
+	if !strings.Contains(lines[0], "over limit") {
+		t.Errorf("over-limit branch (non-cursor) should be tagged 'over limit', got: %q", lines[0])
+	}
+	if strings.Contains(lines[1], "over limit") {
+		t.Errorf("within-limit branch should not be tagged, got: %q", lines[1])
+	}
+}
