@@ -22,7 +22,8 @@ func TestRenderHelp_ContainsKeys(t *testing.T) {
 
 	keys := []string{
 		"enter", "Check out selected branch",
-		"s", "Submit stack",
+		"s", "Submit up to & incl. highlighted",
+		"S", "Submit whole stack",
 		"r", "Restack",
 		"d", "Open diff",
 		"tab", "Switch panel",

@@ -509,8 +509,8 @@ func TestActionKeys(t *testing.T) {
 		wantSpin string
 	}{
 		// Cursor starts on feature-top (IsCurrent), so branch-specific actions include it.
-		{"submit stack", 's', true, "Submitting stack (feature-top)..."},
-		{"submit downstack", 'S', true, "Submitting downstack (feature-top)..."},
+		{"submit up to here", 's', true, "Submitting up to feature-top..."},
+		{"submit whole stack", 'S', true, "Submitting whole stack (feature-top)..."},
 		{"restack", 'r', true, "Restacking (feature-top)..."},
 		{"fetch", 'f', true, "Fetching..."},
 		{"sync", 'y', true, "Syncing..."},
@@ -669,8 +669,8 @@ func TestActionKeys_TargetSelectedBranch(t *testing.T) {
 		key      rune
 		wantArgs []string // expected gt CLI args
 	}{
-		{"submit stack", 's', []string{"stack", "submit", "--no-interactive", "--branch", "feature-base"}},
-		{"submit downstack", 'S', []string{"downstack", "submit", "--no-interactive", "--branch", "feature-base"}},
+		{"submit up to here", 's', []string{"downstack", "submit", "--no-interactive", "--branch", "feature-base"}},
+		{"submit whole stack", 'S', []string{"stack", "submit", "--no-interactive", "--branch", "feature-base"}},
 		{"restack", 'r', []string{"stack", "restack", "--no-interactive", "--branch", "feature-base"}},
 		{"open PR", 'o', []string{"pr", "feature-base"}},
 	}
@@ -1617,37 +1617,16 @@ func tallStackModel(n int, cursorOn string) Model {
 	return m
 }
 
-func TestStackSubmit_BlockedWhenStackTooLarge(t *testing.T) {
-	m := tallStackModel(gt.MaxSubmittableStack+1, "b51")
-	m = sendKey(m, 's')
+// s submits up to & including the highlighted branch (downstack), guarded by
+// that branch's position. S submits the whole stack, guarded by the total.
 
-	if m.running {
-		t.Error("running should be false: oversized stack submit must be blocked")
-	}
-	if !m.statusBar.isError {
-		t.Error("status bar should show an error")
-	}
-	if !containsString(m.statusBar.message, "over") {
-		t.Errorf("status message = %q, want to mention being over the limit", m.statusBar.message)
-	}
-}
-
-func TestStackSubmit_AllowedAtLimit(t *testing.T) {
-	m := tallStackModel(gt.MaxSubmittableStack, "b50")
-	m = sendKey(m, 's')
-
-	if !m.running {
-		t.Error("running should be true: a 50-PR stack submit is within the limit")
-	}
-}
-
-func TestDownstackSubmit_BlockedAboveLimit(t *testing.T) {
-	// 60-tall stack; downstack from #51 would submit 51 PRs → blocked.
+func TestSubmitUpToHere_BlockedAboveLimit(t *testing.T) {
+	// 60-tall stack; submitting up to #51 would submit 51 PRs → blocked.
 	m := tallStackModel(60, "b51")
-	m = sendKey(m, 'S')
+	m = sendKey(m, 's')
 
 	if m.running {
-		t.Error("running should be false: downstack submit above position 50 must be blocked")
+		t.Error("running should be false: submitting up to a branch past #50 must be blocked")
 	}
 	if !m.statusBar.isError {
 		t.Error("status bar should show an error")
@@ -1657,12 +1636,37 @@ func TestDownstackSubmit_BlockedAboveLimit(t *testing.T) {
 	}
 }
 
-func TestDownstackSubmit_AllowedAtLimitInOversizedStack(t *testing.T) {
-	// 60-tall stack, but downstack from #50 submits only the bottom 50 → allowed.
+func TestSubmitUpToHere_AllowedAtLimitInOversizedStack(t *testing.T) {
+	// 60-tall stack, but submitting up to #50 submits only the bottom 50 → allowed.
 	m := tallStackModel(60, "b50")
+	m = sendKey(m, 's')
+
+	if !m.running {
+		t.Error("running should be true: submitting up to #50 of an oversized stack is allowed")
+	}
+}
+
+func TestSubmitWholeStack_BlockedWhenTooLarge(t *testing.T) {
+	// Whole-stack submit counts the total; 51 PRs → blocked regardless of cursor.
+	m := tallStackModel(gt.MaxSubmittableStack+1, "b1")
+	m = sendKey(m, 'S')
+
+	if m.running {
+		t.Error("running should be false: oversized whole-stack submit must be blocked")
+	}
+	if !m.statusBar.isError {
+		t.Error("status bar should show an error")
+	}
+	if !containsString(m.statusBar.message, "over") {
+		t.Errorf("status message = %q, want to mention being over the limit", m.statusBar.message)
+	}
+}
+
+func TestSubmitWholeStack_AllowedAtLimit(t *testing.T) {
+	m := tallStackModel(gt.MaxSubmittableStack, "b1")
 	m = sendKey(m, 'S')
 
 	if !m.running {
-		t.Error("running should be true: downstack submit of the bottom 50 is allowed")
+		t.Error("running should be true: a 50-PR whole-stack submit is within the limit")
 	}
 }

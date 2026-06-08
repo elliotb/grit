@@ -354,7 +354,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.running = true
 					name := branch.Name
 					client := m.gtClient
-					spinnerCmd := m.statusBar.startSpinner("Submitting stack (" + name + ")...")
+					spinnerCmd := m.statusBar.startSpinner("Submitting whole stack (" + name + ")...")
 					actionCmd := runAction("submit", "Stack submitted", func(ctx context.Context) error {
 						return client.StackSubmit(ctx, name)
 					})
@@ -371,8 +371,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.running = true
 					name := branch.Name
 					client := m.gtClient
-					spinnerCmd := m.statusBar.startSpinner("Submitting downstack (" + name + ")...")
-					actionCmd := runAction("downstack-submit", "Downstack submitted", func(ctx context.Context) error {
+					spinnerCmd := m.statusBar.startSpinner("Submitting up to " + name + "...")
+					actionCmd := runAction("downstack-submit", "Submitted up to "+name, func(ctx context.Context) error {
 						return client.DownstackSubmit(ctx, name)
 					})
 					cmds = append(cmds, spinnerCmd, actionCmd)

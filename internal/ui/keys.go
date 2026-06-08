@@ -42,13 +42,15 @@ func defaultKeyMap() keyMap {
 			key.WithKeys("m"),
 			key.WithHelp("m", "trunk"),
 		),
-		StackSubmit: key.NewBinding(
-			key.WithKeys("s"),
-			key.WithHelp("s", "submit stack"),
-		),
+		// Lowercase s is the common, cursor-bounded submit (downstack: trunk up
+		// to and including the highlighted branch). Shift-S submits the whole stack.
 		DownstackSubmit: key.NewBinding(
+			key.WithKeys("s"),
+			key.WithHelp("s", "submit up to here"),
+		),
+		StackSubmit: key.NewBinding(
 			key.WithKeys("S"),
-			key.WithHelp("S", "submit downstack"),
+			key.WithHelp("S", "submit whole stack"),
 		),
 		Restack: key.NewBinding(
 			key.WithKeys("r"),

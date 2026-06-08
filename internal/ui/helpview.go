@@ -35,8 +35,8 @@ func renderHelp() string {
 		{
 			header: "Actions",
 			entries: []helpEntry{
-				{"s", "Submit stack"},
-				{"S", "Submit downstack"},
+				{"s", "Submit up to & incl. highlighted"},
+				{"S", "Submit whole stack"},
 				{"r", "Restack stack"},
 				{"f", "Fetch (repo sync)"},
 				{"y", "Sync"},
