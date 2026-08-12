@@ -77,9 +77,14 @@ func (c *Client) RepoSync(ctx context.Context) error {
 	return err
 }
 
-// Sync runs `gt sync -f --no-interactive`.
+// Sync runs `gt sync -d --no-interactive`.
+//
+// -d (--delete-all) auto-confirms deletion of merged/closed branches only.
+// Deliberately NOT -f (--force): that also auto-confirms overwriting a local
+// branch (or trunk) with the remote version, which silently discards local
+// commits that haven't been submitted yet.
 func (c *Client) Sync(ctx context.Context) error {
-	_, err := c.executor.Execute(ctx, "gt", "sync", "-f", "--no-interactive")
+	_, err := c.executor.Execute(ctx, "gt", "sync", "-d", "--no-interactive")
 	return err
 }
 

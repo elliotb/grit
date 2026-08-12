@@ -184,7 +184,7 @@ func TestSync_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertArgs(t, mock, []string{"sync", "-f", "--no-interactive"})
+	assertArgs(t, mock, []string{"sync", "-d", "--no-interactive"})
 }
 
 func TestSync_Error(t *testing.T) {
@@ -194,6 +194,39 @@ func TestSync_Error(t *testing.T) {
 	err := client.Sync(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+// Sync must never pass -f/--force. Beyond deleting merged branches, force also
+// auto-confirms overwriting a diverged local branch (or trunk) with the remote
+// version, which destroys unsubmitted local commits without warning.
+func TestSync_NeverForces(t *testing.T) {
+	mock := &mockExecutor{}
+	client := New(mock)
+
+	if err := client.Sync(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, arg := range mock.calledArgs {
+		if arg == "-f" || arg == "--force" {
+			t.Errorf("Sync passed %q; force auto-confirms overwriting branches and discards local commits (args: %v)", arg, mock.calledArgs)
+		}
+	}
+}
+
+// RepoSync (the `f` fetch binding) shells out to the same underlying gt command
+// as Sync, so it carries the same clobber risk if it ever gains -f/--force.
+func TestRepoSync_NeverForces(t *testing.T) {
+	mock := &mockExecutor{}
+	client := New(mock)
+
+	if err := client.RepoSync(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, arg := range mock.calledArgs {
+		if arg == "-f" || arg == "--force" {
+			t.Errorf("RepoSync passed %q; force auto-confirms overwriting branches and discards local commits (args: %v)", arg, mock.calledArgs)
+		}
 	}
 }
 

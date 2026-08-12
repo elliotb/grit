@@ -35,11 +35,11 @@ The tree auto-refreshes when your `.git` directory changes, so it stays current 
 | `enter` | Check out selected branch |
 | `m` | Check out trunk (main/master) |
 | `d` | Open diff view |
-| `s` | Submit stack |
-| `S` | Submit downstack |
+| `s` | Submit up to & including selected branch |
+| `S` | Submit whole stack |
 | `r` | Restack stack |
-| `f` | Fetch (repo sync) |
-| `y` | Sync |
+| `f` | Fetch & restack (`gt repo sync`) |
+| `y` | Sync — fetch, restack, delete merged branches (`gt sync -d`) |
 | `o` | Open PR in browser |
 | `?` | Toggle help |
 | `q` | Quit |
